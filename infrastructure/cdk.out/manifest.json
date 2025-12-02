@@ -1,0 +1,1879 @@
+{
+  "version": "48.0.0",
+  "artifacts": {
+    "RepricingDatabaseStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "RepricingDatabaseStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "RepricingDatabaseStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://610274502245/eu-west-2",
+      "properties": {
+        "templateFile": "RepricingDatabaseStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-deploy-role-610274502245-eu-west-2",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-cfn-exec-role-610274502245-eu-west-2",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-610274502245-eu-west-2/a9231642e12122511ec9057e5db313576abf5010f067e10d80611272bcd125d3.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "RepricingDatabaseStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-lookup-role-610274502245-eu-west-2",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "RepricingDatabaseStack.assets"
+      ],
+      "metadata": {
+        "/RepricingDatabaseStack/ProductsTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "ProductsTable241ADBFF"
+            }
+          }
+        ],
+        "/RepricingDatabaseStack/ProductsTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProductsTable241ADBFF"
+          }
+        ],
+        "/RepricingDatabaseStack/PricingRulesTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "PricingRulesTable1AF2183A"
+            }
+          }
+        ],
+        "/RepricingDatabaseStack/PricingRulesTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PricingRulesTable1AF2183A"
+          }
+        ],
+        "/RepricingDatabaseStack/PriceProposalsTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "PriceProposalsTable931260F5"
+            }
+          }
+        ],
+        "/RepricingDatabaseStack/PriceProposalsTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceProposalsTable931260F5"
+          }
+        ],
+        "/RepricingDatabaseStack/ChannelConfigTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "ChannelConfigTableD8390BE1"
+            }
+          }
+        ],
+        "/RepricingDatabaseStack/ChannelConfigTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ChannelConfigTableD8390BE1"
+          }
+        ],
+        "/RepricingDatabaseStack/OrdersTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "OrdersTable315BB997"
+            }
+          }
+        ],
+        "/RepricingDatabaseStack/OrdersTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrdersTable315BB997"
+          }
+        ],
+        "/RepricingDatabaseStack/OrderLinesTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "OrderLinesTable0183B138"
+            }
+          }
+        ],
+        "/RepricingDatabaseStack/OrderLinesTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrderLinesTable0183B138"
+          }
+        ],
+        "/RepricingDatabaseStack/ProductsTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ProductsTableName"
+          }
+        ],
+        "/RepricingDatabaseStack/PricingRulesTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PricingRulesTableName"
+          }
+        ],
+        "/RepricingDatabaseStack/PriceProposalsTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceProposalsTableName"
+          }
+        ],
+        "/RepricingDatabaseStack/ChannelConfigTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ChannelConfigTableName"
+          }
+        ],
+        "/RepricingDatabaseStack/OrdersTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrdersTableName"
+          }
+        ],
+        "/RepricingDatabaseStack/OrderLinesTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrderLinesTableName"
+          }
+        ],
+        "/RepricingDatabaseStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Fn::GetAtt\":[\"ProductsTable241ADBFF\",\"Arn\"]}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputFnGetAttProductsTable241ADBFFArn55D06E2D"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Fn::GetAtt\":[\"PricingRulesTable1AF2183A\",\"Arn\"]}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputFnGetAttPricingRulesTable1AF2183AArnB7A4D291"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Fn::GetAtt\":[\"PriceProposalsTable931260F5\",\"Arn\"]}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputFnGetAttPriceProposalsTable931260F5Arn234D8B2C"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Fn::GetAtt\":[\"ChannelConfigTableD8390BE1\",\"Arn\"]}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputFnGetAttChannelConfigTableD8390BE1Arn954AB87F"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Fn::GetAtt\":[\"OrdersTable315BB997\",\"Arn\"]}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputFnGetAttOrdersTable315BB997ArnB3A07C42"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Ref\":\"ProductsTable241ADBFF\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefProductsTable241ADBFF4DFBD40D"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Ref\":\"PricingRulesTable1AF2183A\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefPricingRulesTable1AF2183ABBBD31FF"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Ref\":\"PriceProposalsTable931260F5\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefPriceProposalsTable931260F5DD6E1A93"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Ref\":\"ChannelConfigTableD8390BE1\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefChannelConfigTableD8390BE19EFE0F1C"
+          }
+        ],
+        "/RepricingDatabaseStack/Exports/Output{\"Ref\":\"OrdersTable315BB997\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefOrdersTable315BB997F7C1D27E"
+          }
+        ],
+        "/RepricingDatabaseStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/RepricingDatabaseStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "RepricingDatabaseStack"
+    },
+    "RepricingLambdaStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "RepricingLambdaStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "RepricingLambdaStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://610274502245/eu-west-2",
+      "properties": {
+        "templateFile": "RepricingLambdaStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-deploy-role-610274502245-eu-west-2",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-cfn-exec-role-610274502245-eu-west-2",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-610274502245-eu-west-2/edfa9018df072f3c5d41a8adf7df0f4b748ad106e1b231246ad17ab3043f9ec2.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "RepricingLambdaStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-lookup-role-610274502245-eu-west-2",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "RepricingDatabaseStack",
+        "RepricingLambdaStack.assets"
+      ],
+      "metadata": {
+        "/RepricingLambdaStack/ChannelEngineSecret/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ChannelEngineSecretDD36CB75"
+          }
+        ],
+        "/RepricingLambdaStack/GoogleSheetsSecret/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "GoogleSheetsSecret16BE3ADF"
+          }
+        ],
+        "/RepricingLambdaStack/DataSyncHandler/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataSyncHandlerServiceRole14DFB11A"
+          }
+        ],
+        "/RepricingLambdaStack/DataSyncHandler/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataSyncHandlerServiceRoleDefaultPolicyA621EDBA"
+          }
+        ],
+        "/RepricingLambdaStack/DataSyncHandler/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataSyncHandler2BB2FACC"
+          }
+        ],
+        "/RepricingLambdaStack/PriceCalculatorHandler/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceCalculatorHandlerServiceRoleF9BDA8EF"
+          }
+        ],
+        "/RepricingLambdaStack/PriceCalculatorHandler/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceCalculatorHandlerServiceRoleDefaultPolicyB05AA369"
+          }
+        ],
+        "/RepricingLambdaStack/PriceCalculatorHandler/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceCalculatorHandler166A70D0"
+          }
+        ],
+        "/RepricingLambdaStack/ApiHandler/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiHandlerServiceRole592E70E9"
+          }
+        ],
+        "/RepricingLambdaStack/ApiHandler/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiHandlerServiceRoleDefaultPolicy10321D87"
+          }
+        ],
+        "/RepricingLambdaStack/ApiHandler/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiHandler5E7490E8"
+          }
+        ],
+        "/RepricingLambdaStack/OrderSyncHandler/ServiceRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrderSyncHandlerServiceRole7BC7ED75"
+          }
+        ],
+        "/RepricingLambdaStack/OrderSyncHandler/ServiceRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrderSyncHandlerServiceRoleDefaultPolicy0C6A42FF"
+          }
+        ],
+        "/RepricingLambdaStack/OrderSyncHandler/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrderSyncHandler3042BD22"
+          }
+        ],
+        "/RepricingLambdaStack/DataSyncSchedule/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataSyncSchedule1DAA771C"
+          }
+        ],
+        "/RepricingLambdaStack/DataSyncSchedule/AllowEventRuleRepricingLambdaStackDataSyncHandler43775783": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataSyncScheduleAllowEventRuleRepricingLambdaStackDataSyncHandler437757837CE9EB36"
+          }
+        ],
+        "/RepricingLambdaStack/PriceCalculatorSchedule/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceCalculatorSchedule0CDBFBE3"
+          }
+        ],
+        "/RepricingLambdaStack/PriceCalculatorSchedule/AllowEventRuleRepricingLambdaStackPriceCalculatorHandler279BA2DC": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceCalculatorScheduleAllowEventRuleRepricingLambdaStackPriceCalculatorHandler279BA2DC6BAAACFA"
+          }
+        ],
+        "/RepricingLambdaStack/DataSyncFunctionArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataSyncFunctionArn"
+          }
+        ],
+        "/RepricingLambdaStack/PriceCalculatorFunctionArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PriceCalculatorFunctionArn"
+          }
+        ],
+        "/RepricingLambdaStack/ApiFunctionArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiFunctionArn"
+          }
+        ],
+        "/RepricingLambdaStack/OrderSyncFunctionArn": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OrderSyncFunctionArn"
+          }
+        ],
+        "/RepricingLambdaStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/RepricingLambdaStack/Exports/Output{\"Fn::GetAtt\":[\"ApiHandler5E7490E8\",\"Arn\"]}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+          }
+        ],
+        "/RepricingLambdaStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/RepricingLambdaStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "RepricingLambdaStack"
+    },
+    "RepricingApiStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "RepricingApiStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "RepricingApiStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://610274502245/eu-west-2",
+      "properties": {
+        "templateFile": "RepricingApiStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-deploy-role-610274502245-eu-west-2",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-cfn-exec-role-610274502245-eu-west-2",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-610274502245-eu-west-2/ddd82cd0138c37c0a91fddbb81c005681a9c188e3feddf05bb95ad4e3dc53104.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "RepricingApiStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-lookup-role-610274502245-eu-west-2",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "RepricingLambdaStack",
+        "RepricingApiStack.assets"
+      ],
+      "metadata": {
+        "/RepricingApiStack/RepricingApi/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApi99010B3B"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/CloudWatchRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiCloudWatchRole69C68B1F"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Account": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiAccount712E24D5"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Deployment/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiDeployment9A0213441c21db406325d1762e0c94d59d6db586"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/DeploymentStage.prod/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiDeploymentStageprodA850B288"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Endpoint": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiEndpointE1080C18"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiOPTIONS5AFABB79"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproducts03EE6EB8"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsOPTIONS35666A88"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..products": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproductsFCC035FF"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..products": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproducts84F25E60"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsGETE840D928"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductssku9F6BE907"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuOPTIONSC3EDA9DE"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..products.{sku}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproductssku1F5BB3E6"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..products.{sku}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproductsskuA92FC8DD"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuGET8734105A"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..products.{sku}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTproductsskuE4A39EBA"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..products.{sku}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTproductsskuCF931F01"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/products/{sku}/PUT/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproductsskuPUT0FFA3DC1"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposals06BB3E19"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsOPTIONS9282188B"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..proposals": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproposalsEBFAFDAB"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..proposals": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproposals8A5E311D"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsGET6E1B9FE9"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposals1E47DFC0"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalsBBA1CB65"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsPOSTC1DD1ADE"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdD894D6D0"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdOPTIONS79E1C993"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..proposals.{proposalId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproposalsproposalId7CC27C8E"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..proposals.{proposalId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproposalsproposalId1AD56860"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdGET9CE71096"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..proposals.{proposalId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTproposalsproposalId9F61EE14"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..proposals.{proposalId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTproposalsproposalIdDE1E1C69"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/PUT/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsproposalIdPUTD605F539"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkapproveF8F0B0DE"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkapproveOPTIONS324D288D"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-approve": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkapprovePOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkapprove67ECF8AF"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-approve": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkapprovePOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkapprove9B7414CA"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkapprovePOSTEC1EC886"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkrejectB7D281CA"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkrejectOPTIONS826E675C"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-reject": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkrejectPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkrejectA2867257"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-reject": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkrejectPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkrejectBCB415B1"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalsbulkrejectPOST42B4E0B5"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/push/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalspush087C81E4"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/push/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalspushOPTIONS6EDB053E"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/push/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals.push": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalspushPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposalspushA7BA939E"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/push/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals.push": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalspushPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalspushB615DE53"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/proposals/push/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiproposalspushPOST8261C405"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesE5324522"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesOPTIONS24F8A0EE"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..rules": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETrules9CDCD812"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..rules": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETrules1EA8E201"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesGET86EA79B8"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..rules": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTrules20E60D0C"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..rules": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTrules0D723ED4"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesPOST2083B3EC"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleId963CA008"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdOPTIONS3E9A10B1"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..rules.{ruleId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETrulesruleIdAE2972D9"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..rules.{ruleId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETrulesruleId81C9BA46"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdGET9384458F"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..rules.{ruleId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTrulesruleId99E0F10C"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..rules.{ruleId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTrulesruleId898AC54B"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/PUT/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdPUTD1ECCEF6"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/DELETE/ApiPermission.RepricingApiStackRepricingApi453CD5A3.DELETE..rules.{ruleId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdDELETEApiPermissionRepricingApiStackRepricingApi453CD5A3DELETErulesruleId400FAA97"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/DELETE/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.DELETE..rules.{ruleId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdDELETEApiPermissionTestRepricingApiStackRepricingApi453CD5A3DELETErulesruleId57D299C4"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/rules/{ruleId}/DELETE/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApirulesruleIdDELETE0EF43DFF"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannels50B677BC"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelsOPTIONSB9728981"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..channels": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETchannels4089641F"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..channels": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETchannels1E1750C0"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelsGET7363A733"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelId54619E2F"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdOPTIONSFD2A721F"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..channels.{channelId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETchannelschannelId793627EB"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..channels.{channelId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETchannelschannelId84735BF4"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdGETC1784D3A"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..channels.{channelId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTchannelschannelId212AAA10"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..channels.{channelId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTchannelschannelIdE715BB19"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/channels/{channelId}/PUT/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApichannelschannelIdPUT1E0AD7A2"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/sync/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApisyncEF6D37F5"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/sync/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApisyncOPTIONS0216C584"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/sync/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..sync": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApisyncPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTsync64487937"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/sync/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..sync": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApisyncPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTsync2F5AC559"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/sync/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApisyncPOST37852603"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsE43A5CCA"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsOPTIONSECBD5EA6"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/summary/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssummary6145A999"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/summary/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssummaryOPTIONS437D0328"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/summary/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..analytics.summary": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssummaryGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETanalyticssummaryE4DADF9A"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/summary/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..analytics.summary": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssummaryGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETanalyticssummary8264FC47"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/summary/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssummaryGETC2FC9B9A"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/margins/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsmargins5CB12C3B"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/margins/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsmarginsOPTIONS60E4BF98"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/margins/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..analytics.margins": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsmarginsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETanalyticsmarginsC59EAEA8"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/margins/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..analytics.margins": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsmarginsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETanalyticsmargins8095934D"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/margins/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticsmarginsGETFADA1AA6"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/sales/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssales0F9BD292"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/sales/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssalesOPTIONS99592980"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/sales/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..analytics.sales": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssalesGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETanalyticssales210F1943"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/sales/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..analytics.sales": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssalesGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETanalyticssales600AB36C"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/analytics/sales/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApianalyticssalesGETE5B479C0"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimport66C32253"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportOPTIONSE45200BA"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/costs/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportcosts72BC066F"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/costs/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportcostsOPTIONSD1D16F99"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/costs/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..import.costs": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportcostsPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTimportcosts3E7EF564"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/costs/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..import.costs": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportcostsPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTimportcostsA9824F11"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/costs/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportcostsPOST08A7A53A"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/delivery/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportdelivery224C10D8"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/delivery/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportdeliveryOPTIONS50C116A0"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/delivery/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..import.delivery": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportdeliveryPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTimportdelivery17A4B944"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/delivery/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..import.delivery": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportdeliveryPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTimportdelivery6AC395B3"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/import/delivery/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApiimportdeliveryPOST54292E73"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriers393A653D"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersOPTIONSE4B04141"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..carriers": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETcarriersC372EA88"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..carriers": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETcarriersDB26EE6A"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersGET3328C1E6"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..carriers": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTcarriers7FCE4945"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..carriers": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTcarriers21EE241E"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarriersPOST8F95B897"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierId67E272CF"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdOPTIONSD555AC51"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..carriers.{carrierId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETcarrierscarrierId1E5E6A40"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..carriers.{carrierId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETcarrierscarrierId10DF8674"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdGETBCAC53C1"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..carriers.{carrierId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTcarrierscarrierId265A6E18"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..carriers.{carrierId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTcarrierscarrierIdFAD83815"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/PUT/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdPUTC155759E"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/DELETE/ApiPermission.RepricingApiStackRepricingApi453CD5A3.DELETE..carriers.{carrierId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdDELETEApiPermissionRepricingApiStackRepricingApi453CD5A3DELETEcarrierscarrierId6A9BCF81"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/DELETE/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.DELETE..carriers.{carrierId}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdDELETEApiPermissionTestRepricingApiStackRepricingApi453CD5A3DELETEcarrierscarrierIdCCA17E1E"
+          }
+        ],
+        "/RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/DELETE/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "RepricingApicarrierscarrierIdDELETE0E9E053B"
+          }
+        ],
+        "/RepricingApiStack/ApiEndpoint": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiEndpoint"
+          }
+        ],
+        "/RepricingApiStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/RepricingApiStack/Exports/Output{\"Ref\":\"RepricingApi99010B3B\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefRepricingApi99010B3B2D32244C"
+          }
+        ],
+        "/RepricingApiStack/Exports/Output{\"Ref\":\"RepricingApiDeploymentStageprodA850B288\"}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ExportsOutputRefRepricingApiDeploymentStageprodA850B288DCB1F78D"
+          }
+        ],
+        "/RepricingApiStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/RepricingApiStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "RepricingApiStack"
+    },
+    "RepricingFrontendStack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "RepricingFrontendStack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "RepricingFrontendStack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://610274502245/eu-west-2",
+      "properties": {
+        "templateFile": "RepricingFrontendStack.template.json",
+        "terminationProtection": false,
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-deploy-role-610274502245-eu-west-2",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-cfn-exec-role-610274502245-eu-west-2",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-610274502245-eu-west-2/a71ac235b0ef9cb3921fd835bf168cb61c5573638999dcf15985beb9a2b6172e.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "RepricingFrontendStack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-lookup-role-610274502245-eu-west-2",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "RepricingApiStack",
+        "RepricingFrontendStack.assets"
+      ],
+      "metadata": {
+        "/RepricingFrontendStack/WebsiteBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "WebsiteBucket75C24D94"
+          }
+        ],
+        "/RepricingFrontendStack/WebsiteBucket/Policy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "WebsiteBucketPolicyE10E3262"
+          }
+        ],
+        "/RepricingFrontendStack/WebsiteBucket/AutoDeleteObjectsCustomResource/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "WebsiteBucketAutoDeleteObjectsCustomResource8750E461"
+          }
+        ],
+        "/RepricingFrontendStack/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+          {
+            "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+            "data": true
+          }
+        ],
+        "/RepricingFrontendStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+          }
+        ],
+        "/RepricingFrontendStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+          }
+        ],
+        "/RepricingFrontendStack/OAI/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "OAIE1EFC67F"
+          }
+        ],
+        "/RepricingFrontendStack/Distribution/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Distribution830FAC52"
+          }
+        ],
+        "/RepricingFrontendStack/WebsiteBucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "WebsiteBucketName"
+          }
+        ],
+        "/RepricingFrontendStack/DistributionDomainName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DistributionDomainName"
+          }
+        ],
+        "/RepricingFrontendStack/WebsiteUrl": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "WebsiteUrl"
+          }
+        ],
+        "/RepricingFrontendStack/ApiUrl": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiUrl"
+          }
+        ],
+        "/RepricingFrontendStack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/RepricingFrontendStack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/RepricingFrontendStack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "RepricingFrontendStack"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    },
+    "aws-cdk-lib/feature-flag-report": {
+      "type": "cdk:feature-flag-report",
+      "properties": {
+        "module": "aws-cdk-lib",
+        "flags": {
+          "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": {
+            "recommendedValue": true,
+            "explanation": "Pass signingProfileName to CfnSigningProfile"
+          },
+          "@aws-cdk/core:newStyleStackSynthesis": {
+            "recommendedValue": true,
+            "explanation": "Switch to new stack synthesis method which enables CI/CD",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/core:stackRelativeExports": {
+            "recommendedValue": true,
+            "explanation": "Name exports based on the construct paths relative to the stack, rather than the global construct path",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": {
+            "recommendedValue": true,
+            "explanation": "Disable implicit openListener when custom security groups are provided"
+          },
+          "@aws-cdk/aws-rds:lowercaseDbIdentifier": {
+            "recommendedValue": true,
+            "explanation": "Force lowercasing of RDS Cluster names in CDK",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-apigateway:usagePlanKeyOrderInsensitiveId": {
+            "recommendedValue": true,
+            "explanation": "Allow adding/removing multiple UsagePlanKeys independently",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-lambda:recognizeVersionProps": {
+            "recommendedValue": true,
+            "explanation": "Enable this feature flag to opt in to the updated logical id calculation for Lambda Version created using the  `fn.currentVersion`.",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-lambda:recognizeLayerVersion": {
+            "userValue": true,
+            "recommendedValue": true,
+            "explanation": "Enable this feature flag to opt in to the updated logical id calculation for Lambda Version created using the `fn.currentVersion`."
+          },
+          "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": {
+            "recommendedValue": true,
+            "explanation": "Enable this feature flag to have cloudfront distributions use the security policy TLSv1.2_2021 by default.",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/core:checkSecretUsage": {
+            "userValue": true,
+            "recommendedValue": true,
+            "explanation": "Enable this flag to make it impossible to accidentally use SecretValues in unsafe locations"
+          },
+          "@aws-cdk/core:target-partitions": {
+            "userValue": [
+              "aws"
+            ],
+            "recommendedValue": [
+              "aws",
+              "aws-cn"
+            ],
+            "explanation": "What regions to include in lookup tables of environment agnostic stacks"
+          },
+          "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": {
+            "recommendedValue": true,
+            "explanation": "ECS extensions will automatically add an `awslogs` driver if no logging is specified"
+          },
+          "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": {
+            "recommendedValue": true,
+            "explanation": "Enable this feature flag to have Launch Templates generated by the `InstanceRequireImdsv2Aspect` use unique names."
+          },
+          "@aws-cdk/aws-ecs:arnFormatIncludesClusterName": {
+            "recommendedValue": true,
+            "explanation": "ARN format used by ECS. In the new ARN format, the cluster name is part of the resource ID."
+          },
+          "@aws-cdk/aws-iam:minimizePolicies": {
+            "recommendedValue": true,
+            "explanation": "Minimize IAM policies by combining Statements"
+          },
+          "@aws-cdk/core:validateSnapshotRemovalPolicy": {
+            "recommendedValue": true,
+            "explanation": "Error on snapshot removal policies on resources that do not support it."
+          },
+          "@aws-cdk/aws-codepipeline:crossAccountKeyAliasStackSafeResourceName": {
+            "recommendedValue": true,
+            "explanation": "Generate key aliases that include the stack name"
+          },
+          "@aws-cdk/aws-s3:createDefaultLoggingPolicy": {
+            "recommendedValue": true,
+            "explanation": "Enable this feature flag to create an S3 bucket policy by default in cases where an AWS service would automatically create the Policy if one does not exist."
+          },
+          "@aws-cdk/aws-sns-subscriptions:restrictSqsDescryption": {
+            "recommendedValue": true,
+            "explanation": "Restrict KMS key policy for encrypted Queues a bit more"
+          },
+          "@aws-cdk/aws-apigateway:disableCloudWatchRole": {
+            "recommendedValue": true,
+            "explanation": "Make default CloudWatch Role behavior safe for multiple API Gateways in one environment"
+          },
+          "@aws-cdk/core:enablePartitionLiterals": {
+            "recommendedValue": true,
+            "explanation": "Make ARNs concrete if AWS partition is known"
+          },
+          "@aws-cdk/aws-events:eventsTargetQueueSameAccount": {
+            "recommendedValue": true,
+            "explanation": "Event Rules may only push to encrypted SQS queues in the same account"
+          },
+          "@aws-cdk/aws-ecs:disableExplicitDeploymentControllerForCircuitBreaker": {
+            "recommendedValue": true,
+            "explanation": "Avoid setting the \"ECS\" deployment controller when adding a circuit breaker"
+          },
+          "@aws-cdk/aws-iam:importedRoleStackSafeDefaultPolicyName": {
+            "recommendedValue": true,
+            "explanation": "Enable this feature to create default policy names for imported roles that depend on the stack the role is in."
+          },
+          "@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy": {
+            "recommendedValue": true,
+            "explanation": "Use S3 Bucket Policy instead of ACLs for Server Access Logging"
+          },
+          "@aws-cdk/aws-route53-patters:useCertificate": {
+            "recommendedValue": true,
+            "explanation": "Use the official `Certificate` resource instead of `DnsValidatedCertificate`"
+          },
+          "@aws-cdk/customresources:installLatestAwsSdkDefault": {
+            "recommendedValue": false,
+            "explanation": "Whether to install the latest SDK by default in AwsCustomResource"
+          },
+          "@aws-cdk/aws-rds:databaseProxyUniqueResourceName": {
+            "recommendedValue": true,
+            "explanation": "Use unique resource name for Database Proxy"
+          },
+          "@aws-cdk/aws-codedeploy:removeAlarmsFromDeploymentGroup": {
+            "recommendedValue": true,
+            "explanation": "Remove CloudWatch alarms from deployment group"
+          },
+          "@aws-cdk/aws-apigateway:authorizerChangeDeploymentLogicalId": {
+            "recommendedValue": true,
+            "explanation": "Include authorizer configuration in the calculation of the API deployment logical ID."
+          },
+          "@aws-cdk/aws-ec2:launchTemplateDefaultUserData": {
+            "recommendedValue": true,
+            "explanation": "Define user data for a launch template by default when a machine image is provided."
+          },
+          "@aws-cdk/aws-secretsmanager:useAttachedSecretResourcePolicyForSecretTargetAttachments": {
+            "recommendedValue": true,
+            "explanation": "SecretTargetAttachments uses the ResourcePolicy of the attached Secret."
+          },
+          "@aws-cdk/aws-redshift:columnId": {
+            "recommendedValue": true,
+            "explanation": "Whether to use an ID to track Redshift column changes"
+          },
+          "@aws-cdk/aws-stepfunctions-tasks:enableEmrServicePolicyV2": {
+            "recommendedValue": true,
+            "explanation": "Enable AmazonEMRServicePolicy_v2 managed policies"
+          },
+          "@aws-cdk/aws-ec2:restrictDefaultSecurityGroup": {
+            "recommendedValue": true,
+            "explanation": "Restrict access to the VPC default security group"
+          },
+          "@aws-cdk/aws-apigateway:requestValidatorUniqueId": {
+            "recommendedValue": true,
+            "explanation": "Generate a unique id for each RequestValidator added to a method"
+          },
+          "@aws-cdk/aws-kms:aliasNameRef": {
+            "recommendedValue": true,
+            "explanation": "KMS Alias name and keyArn will have implicit reference to KMS Key"
+          },
+          "@aws-cdk/aws-kms:applyImportedAliasPermissionsToPrincipal": {
+            "recommendedValue": true,
+            "explanation": "Enable grant methods on Aliases imported by name to use kms:ResourceAliases condition"
+          },
+          "@aws-cdk/aws-autoscaling:generateLaunchTemplateInsteadOfLaunchConfig": {
+            "recommendedValue": true,
+            "explanation": "Generate a launch template when creating an AutoScalingGroup"
+          },
+          "@aws-cdk/core:includePrefixInUniqueNameGeneration": {
+            "recommendedValue": true,
+            "explanation": "Include the stack prefix in the stack name generation process"
+          },
+          "@aws-cdk/aws-efs:denyAnonymousAccess": {
+            "recommendedValue": true,
+            "explanation": "EFS denies anonymous clients accesses"
+          },
+          "@aws-cdk/aws-opensearchservice:enableOpensearchMultiAzWithStandby": {
+            "recommendedValue": true,
+            "explanation": "Enables support for Multi-AZ with Standby deployment for opensearch domains"
+          },
+          "@aws-cdk/aws-lambda-nodejs:useLatestRuntimeVersion": {
+            "recommendedValue": true,
+            "explanation": "Enables aws-lambda-nodejs.Function to use the latest available NodeJs runtime as the default"
+          },
+          "@aws-cdk/aws-efs:mountTargetOrderInsensitiveLogicalId": {
+            "recommendedValue": true,
+            "explanation": "When enabled, mount targets will have a stable logicalId that is linked to the associated subnet."
+          },
+          "@aws-cdk/aws-rds:auroraClusterChangeScopeOfInstanceParameterGroupWithEachParameters": {
+            "recommendedValue": true,
+            "explanation": "When enabled, a scope of InstanceParameterGroup for AuroraClusterInstance with each parameters will change."
+          },
+          "@aws-cdk/aws-appsync:useArnForSourceApiAssociationIdentifier": {
+            "recommendedValue": true,
+            "explanation": "When enabled, will always use the arn for identifiers for CfnSourceApiAssociation in the GraphqlApi construct rather than id."
+          },
+          "@aws-cdk/aws-rds:preventRenderingDeprecatedCredentials": {
+            "recommendedValue": true,
+            "explanation": "When enabled, creating an RDS database cluster from a snapshot will only render credentials for snapshot credentials."
+          },
+          "@aws-cdk/aws-codepipeline-actions:useNewDefaultBranchForCodeCommitSource": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the CodeCommit source action is using the default branch name 'main'."
+          },
+          "@aws-cdk/aws-cloudwatch-actions:changeLambdaPermissionLogicalIdForLambdaAction": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the logical ID of a Lambda permission for a Lambda action includes an alarm ID."
+          },
+          "@aws-cdk/aws-codepipeline:crossAccountKeysDefaultValueToFalse": {
+            "recommendedValue": true,
+            "explanation": "Enables Pipeline to set the default value for crossAccountKeys to false."
+          },
+          "@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2": {
+            "recommendedValue": true,
+            "explanation": "Enables Pipeline to set the default pipeline type to V2."
+          },
+          "@aws-cdk/aws-kms:reduceCrossAccountRegionPolicyScope": {
+            "recommendedValue": true,
+            "explanation": "When enabled, IAM Policy created from KMS key grant will reduce the resource scope to this key only."
+          },
+          "@aws-cdk/pipelines:reduceAssetRoleTrustScope": {
+            "recommendedValue": true,
+            "explanation": "Remove the root account principal from PipelineAssetsFileRole trust policy",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-eks:nodegroupNameAttribute": {
+            "recommendedValue": true,
+            "explanation": "When enabled, nodegroupName attribute of the provisioned EKS NodeGroup will not have the cluster name prefix."
+          },
+          "@aws-cdk/aws-ec2:ebsDefaultGp3Volume": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the default volume type of the EBS volume will be GP3"
+          },
+          "@aws-cdk/aws-ecs:removeDefaultDeploymentAlarm": {
+            "recommendedValue": true,
+            "explanation": "When enabled, remove default deployment alarm settings"
+          },
+          "@aws-cdk/custom-resources:logApiResponseDataPropertyTrueDefault": {
+            "recommendedValue": false,
+            "explanation": "When enabled, the custom resource used for `AwsCustomResource` will configure the `logApiResponseData` property as true by default"
+          },
+          "@aws-cdk/aws-s3:keepNotificationInImportedBucket": {
+            "recommendedValue": false,
+            "explanation": "When enabled, Adding notifications to a bucket in the current stack will not remove notification from imported stack."
+          },
+          "@aws-cdk/aws-stepfunctions-tasks:useNewS3UriParametersForBedrockInvokeModelTask": {
+            "recommendedValue": true,
+            "explanation": "When enabled, use new props for S3 URI field in task definition of state machine for bedrock invoke model.",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/core:explicitStackTags": {
+            "recommendedValue": true,
+            "explanation": "When enabled, stack tags need to be assigned explicitly on a Stack."
+          },
+          "@aws-cdk/aws-ecs:enableImdsBlockingDeprecatedFeature": {
+            "recommendedValue": false,
+            "explanation": "When set to true along with canContainersAccessInstanceRole=false in ECS cluster, new updated commands will be added to UserData to block container accessing IMDS. **Applicable to Linux only. IMPORTANT: See [details.](#aws-cdkaws-ecsenableImdsBlockingDeprecatedFeature)**"
+          },
+          "@aws-cdk/aws-ecs:disableEcsImdsBlocking": {
+            "recommendedValue": true,
+            "explanation": "When set to true, CDK synth will throw exception if canContainersAccessInstanceRole is false. **IMPORTANT: See [details.](#aws-cdkaws-ecsdisableEcsImdsBlocking)**"
+          },
+          "@aws-cdk/aws-ecs:reduceEc2FargateCloudWatchPermissions": {
+            "recommendedValue": true,
+            "explanation": "When enabled, we will only grant the necessary permissions when users specify cloudwatch log group through logConfiguration"
+          },
+          "@aws-cdk/aws-dynamodb:resourcePolicyPerReplica": {
+            "recommendedValue": true,
+            "explanation": "When enabled will allow you to specify a resource policy per replica, and not copy the source table policy to all replicas"
+          },
+          "@aws-cdk/aws-ec2:ec2SumTImeoutEnabled": {
+            "recommendedValue": true,
+            "explanation": "When enabled, initOptions.timeout and resourceSignalTimeout values will be summed together."
+          },
+          "@aws-cdk/aws-appsync:appSyncGraphQLAPIScopeLambdaPermission": {
+            "recommendedValue": true,
+            "explanation": "When enabled, a Lambda authorizer Permission created when using GraphqlApi will be properly scoped with a SourceArn."
+          },
+          "@aws-cdk/aws-rds:setCorrectValueForDatabaseInstanceReadReplicaInstanceResourceId": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the value of property `instanceResourceId` in construct `DatabaseInstanceReadReplica` will be set to the correct value which is `DbiResourceId` instead of currently `DbInstanceArn`"
+          },
+          "@aws-cdk/core:cfnIncludeRejectComplexResourceUpdateCreatePolicyIntrinsics": {
+            "recommendedValue": true,
+            "explanation": "When enabled, CFN templates added with `cfn-include` will error if the template contains Resource Update or Create policies with CFN Intrinsics that include non-primitive values."
+          },
+          "@aws-cdk/aws-lambda-nodejs:sdkV3ExcludeSmithyPackages": {
+            "recommendedValue": true,
+            "explanation": "When enabled, both `@aws-sdk` and `@smithy` packages will be excluded from the Lambda Node.js 18.x runtime to prevent version mismatches in bundled applications."
+          },
+          "@aws-cdk/aws-stepfunctions-tasks:fixRunEcsTaskPolicy": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the resource of IAM Run Ecs policy generated by SFN EcsRunTask will reference the definition, instead of constructing ARN."
+          },
+          "@aws-cdk/aws-ec2:bastionHostUseAmazonLinux2023ByDefault": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the BastionHost construct will use the latest Amazon Linux 2023 AMI, instead of Amazon Linux 2."
+          },
+          "@aws-cdk/core:aspectStabilization": {
+            "recommendedValue": true,
+            "explanation": "When enabled, a stabilization loop will be run when invoking Aspects during synthesis.",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-route53-targets:userPoolDomainNameMethodWithoutCustomResource": {
+            "recommendedValue": true,
+            "explanation": "When enabled, use a new method for DNS Name of user pool domain target without creating a custom resource."
+          },
+          "@aws-cdk/aws-elasticloadbalancingV2:albDualstackWithoutPublicIpv4SecurityGroupRulesDefault": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the default security group ingress rules will allow IPv6 ingress from anywhere"
+          },
+          "@aws-cdk/aws-iam:oidcRejectUnauthorizedConnections": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the default behaviour of OIDC provider will reject unauthorized connections"
+          },
+          "@aws-cdk/core:enableAdditionalMetadataCollection": {
+            "recommendedValue": true,
+            "explanation": "When enabled, CDK will expand the scope of usage data collected to better inform CDK development and improve communication for security concerns and emerging issues."
+          },
+          "@aws-cdk/aws-lambda:createNewPoliciesWithAddToRolePolicy": {
+            "recommendedValue": false,
+            "explanation": "[Deprecated] When enabled, Lambda will create new inline policies with AddToRolePolicy instead of adding to the Default Policy Statement"
+          },
+          "@aws-cdk/aws-s3:setUniqueReplicationRoleName": {
+            "recommendedValue": true,
+            "explanation": "When enabled, CDK will automatically generate a unique role name that is used for s3 object replication."
+          },
+          "@aws-cdk/pipelines:reduceStageRoleTrustScope": {
+            "recommendedValue": true,
+            "explanation": "Remove the root account principal from Stage addActions trust policy",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-events:requireEventBusPolicySid": {
+            "recommendedValue": true,
+            "explanation": "When enabled, grantPutEventsTo() will use resource policies with Statement IDs for service principals."
+          },
+          "@aws-cdk/core:aspectPrioritiesMutating": {
+            "recommendedValue": true,
+            "explanation": "When set to true, Aspects added by the construct library on your behalf will be given a priority of MUTATING."
+          },
+          "@aws-cdk/aws-dynamodb:retainTableReplica": {
+            "recommendedValue": true,
+            "explanation": "When enabled, table replica will be default to the removal policy of source table unless specified otherwise."
+          },
+          "@aws-cdk/cognito:logUserPoolClientSecretValue": {
+            "recommendedValue": false,
+            "explanation": "When disabled, the value of the user pool client secret will not be logged in the custom resource lambda function logs."
+          },
+          "@aws-cdk/pipelines:reduceCrossAccountActionRoleTrustScope": {
+            "recommendedValue": true,
+            "explanation": "When enabled, scopes down the trust policy for the cross-account action role",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-stepfunctions:useDistributedMapResultWriterV2": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the resultWriterV2 property of DistributedMap will be used insted of resultWriter"
+          },
+          "@aws-cdk/s3-notifications:addS3TrustKeyPolicyForSnsSubscriptions": {
+            "recommendedValue": true,
+            "explanation": "Add an S3 trust policy to a KMS key resource policy for SNS subscriptions."
+          },
+          "@aws-cdk/aws-ec2:requirePrivateSubnetsForEgressOnlyInternetGateway": {
+            "recommendedValue": true,
+            "explanation": "When enabled, the EgressOnlyGateway resource is only created if private subnets are defined in the dual-stack VPC."
+          },
+          "@aws-cdk/aws-ec2-alpha:useResourceIdForVpcV2Migration": {
+            "recommendedValue": false,
+            "explanation": "When enabled, use resource IDs for VPC V2 migration"
+          },
+          "@aws-cdk/aws-s3:publicAccessBlockedByDefault": {
+            "recommendedValue": true,
+            "explanation": "When enabled, setting any combination of options for BlockPublicAccess will automatically set true for any options not defined."
+          },
+          "@aws-cdk/aws-lambda:useCdkManagedLogGroup": {
+            "recommendedValue": true,
+            "explanation": "When enabled, CDK creates and manages loggroup for the lambda function"
+          },
+          "@aws-cdk/aws-elasticloadbalancingv2:networkLoadBalancerWithSecurityGroupByDefault": {
+            "recommendedValue": true,
+            "explanation": "When enabled, Network Load Balancer will be created with a security group by default."
+          },
+          "@aws-cdk/aws-stepfunctions-tasks:httpInvokeDynamicJsonPathEndpoint": {
+            "recommendedValue": true,
+            "explanation": "When enabled, allows using a dynamic apiEndpoint with JSONPath format in HttpInvoke tasks.",
+            "unconfiguredBehavesLike": {
+              "v2": true
+            }
+          },
+          "@aws-cdk/aws-ecs-patterns:uniqueTargetGroupId": {
+            "recommendedValue": true,
+            "explanation": "When enabled, ECS patterns will generate unique target group IDs to prevent conflicts during load balancer replacement"
+          }
+        }
+      }
+    }
+  },
+  "minimumCliVersion": "2.1033.0"
+}

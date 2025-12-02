@@ -1,0 +1,21 @@
+{
+  "version": "48.0.0",
+  "files": {
+    "ddd82cd0138c37c0a91fddbb81c005681a9c188e3feddf05bb95ad4e3dc53104": {
+      "displayName": "RepricingApiStack Template",
+      "source": {
+        "path": "RepricingApiStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "610274502245-eu-west-2-8e126eed": {
+          "bucketName": "cdk-hnb659fds-assets-610274502245-eu-west-2",
+          "objectKey": "ddd82cd0138c37c0a91fddbb81c005681a9c188e3feddf05bb95ad4e3dc53104.json",
+          "region": "eu-west-2",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::610274502245:role/cdk-hnb659fds-file-publishing-role-610274502245-eu-west-2"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

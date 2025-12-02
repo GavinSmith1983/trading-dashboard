@@ -1,0 +1,4421 @@
+{
+ "Resources": {
+  "RepricingApi99010B3B": {
+   "Type": "AWS::ApiGateway::RestApi",
+   "Properties": {
+    "Description": "API for the repricing approval workflow",
+    "Name": "Repricing API"
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Resource"
+   }
+  },
+  "RepricingApiCloudWatchRole69C68B1F": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "apigateway.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+       ]
+      ]
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/CloudWatchRole/Resource"
+   }
+  },
+  "RepricingApiAccount712E24D5": {
+   "Type": "AWS::ApiGateway::Account",
+   "Properties": {
+    "CloudWatchRoleArn": {
+     "Fn::GetAtt": [
+      "RepricingApiCloudWatchRole69C68B1F",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "RepricingApi99010B3B"
+   ],
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Account"
+   }
+  },
+  "RepricingApiDeployment9A0213441c21db406325d1762e0c94d59d6db586": {
+   "Type": "AWS::ApiGateway::Deployment",
+   "Properties": {
+    "Description": "API for the repricing approval workflow",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "DependsOn": [
+    "RepricingApianalyticsmarginsGETFADA1AA6",
+    "RepricingApianalyticsmarginsOPTIONS60E4BF98",
+    "RepricingApianalyticsmargins5CB12C3B",
+    "RepricingApianalyticsOPTIONSECBD5EA6",
+    "RepricingApianalyticsE43A5CCA",
+    "RepricingApianalyticssalesGETE5B479C0",
+    "RepricingApianalyticssalesOPTIONS99592980",
+    "RepricingApianalyticssales0F9BD292",
+    "RepricingApianalyticssummaryGETC2FC9B9A",
+    "RepricingApianalyticssummaryOPTIONS437D0328",
+    "RepricingApianalyticssummary6145A999",
+    "RepricingApicarrierscarrierIdDELETE0E9E053B",
+    "RepricingApicarrierscarrierIdGETBCAC53C1",
+    "RepricingApicarrierscarrierIdOPTIONSD555AC51",
+    "RepricingApicarrierscarrierIdPUTC155759E",
+    "RepricingApicarrierscarrierId67E272CF",
+    "RepricingApicarriersGET3328C1E6",
+    "RepricingApicarriersOPTIONSE4B04141",
+    "RepricingApicarriersPOST8F95B897",
+    "RepricingApicarriers393A653D",
+    "RepricingApichannelschannelIdGETC1784D3A",
+    "RepricingApichannelschannelIdOPTIONSFD2A721F",
+    "RepricingApichannelschannelIdPUT1E0AD7A2",
+    "RepricingApichannelschannelId54619E2F",
+    "RepricingApichannelsGET7363A733",
+    "RepricingApichannelsOPTIONSB9728981",
+    "RepricingApichannels50B677BC",
+    "RepricingApiimportcostsOPTIONSD1D16F99",
+    "RepricingApiimportcostsPOST08A7A53A",
+    "RepricingApiimportcosts72BC066F",
+    "RepricingApiimportdeliveryOPTIONS50C116A0",
+    "RepricingApiimportdeliveryPOST54292E73",
+    "RepricingApiimportdelivery224C10D8",
+    "RepricingApiimportOPTIONSE45200BA",
+    "RepricingApiimport66C32253",
+    "RepricingApiOPTIONS5AFABB79",
+    "RepricingApiproductsskuGET8734105A",
+    "RepricingApiproductsskuOPTIONSC3EDA9DE",
+    "RepricingApiproductsskuPUT0FFA3DC1",
+    "RepricingApiproductssku9F6BE907",
+    "RepricingApiproductsGETE840D928",
+    "RepricingApiproductsOPTIONS35666A88",
+    "RepricingApiproducts03EE6EB8",
+    "RepricingApiproposalsproposalIdGET9CE71096",
+    "RepricingApiproposalsproposalIdOPTIONS79E1C993",
+    "RepricingApiproposalsproposalIdPUTD605F539",
+    "RepricingApiproposalsproposalIdD894D6D0",
+    "RepricingApiproposalsbulkapproveOPTIONS324D288D",
+    "RepricingApiproposalsbulkapprovePOSTEC1EC886",
+    "RepricingApiproposalsbulkapproveF8F0B0DE",
+    "RepricingApiproposalsbulkrejectOPTIONS826E675C",
+    "RepricingApiproposalsbulkrejectPOST42B4E0B5",
+    "RepricingApiproposalsbulkrejectB7D281CA",
+    "RepricingApiproposalsGET6E1B9FE9",
+    "RepricingApiproposalsOPTIONS9282188B",
+    "RepricingApiproposalsPOSTC1DD1ADE",
+    "RepricingApiproposalspushOPTIONS6EDB053E",
+    "RepricingApiproposalspushPOST8261C405",
+    "RepricingApiproposalspush087C81E4",
+    "RepricingApiproposals06BB3E19",
+    "RepricingApirulesruleIdDELETE0EF43DFF",
+    "RepricingApirulesruleIdGET9384458F",
+    "RepricingApirulesruleIdOPTIONS3E9A10B1",
+    "RepricingApirulesruleIdPUTD1ECCEF6",
+    "RepricingApirulesruleId963CA008",
+    "RepricingApirulesGET86EA79B8",
+    "RepricingApirulesOPTIONS24F8A0EE",
+    "RepricingApirulesPOST2083B3EC",
+    "RepricingApirulesE5324522",
+    "RepricingApisyncOPTIONS0216C584",
+    "RepricingApisyncPOST37852603",
+    "RepricingApisyncEF6D37F5"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Deployment/Resource",
+    "aws:cdk:do-not-refactor": true
+   }
+  },
+  "RepricingApiDeploymentStageprodA850B288": {
+   "Type": "AWS::ApiGateway::Stage",
+   "Properties": {
+    "DeploymentId": {
+     "Ref": "RepricingApiDeployment9A0213441c21db406325d1762e0c94d59d6db586"
+    },
+    "MethodSettings": [
+     {
+      "DataTraceEnabled": false,
+      "HttpMethod": "*",
+      "ResourcePath": "/*",
+      "ThrottlingBurstLimit": 100,
+      "ThrottlingRateLimit": 50
+     }
+    ],
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    },
+    "StageName": "prod"
+   },
+   "DependsOn": [
+    "RepricingApiAccount712E24D5"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/DeploymentStage.prod/Resource"
+   }
+  },
+  "RepricingApiOPTIONS5AFABB79": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproducts03EE6EB8": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "products",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/Resource"
+   }
+  },
+  "RepricingApiproductsOPTIONS35666A88": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproducts03EE6EB8"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproductsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproductsFCC035FF": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/products"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..products"
+   }
+  },
+  "RepricingApiproductsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproducts84F25E60": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/products"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..products"
+   }
+  },
+  "RepricingApiproductsGETE840D928": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproducts03EE6EB8"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/GET/Resource"
+   }
+  },
+  "RepricingApiproductssku9F6BE907": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiproducts03EE6EB8"
+    },
+    "PathPart": "{sku}",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/Resource"
+   }
+  },
+  "RepricingApiproductsskuOPTIONSC3EDA9DE": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproductssku9F6BE907"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproductsskuGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproductssku1F5BB3E6": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/products/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..products.{sku}"
+   }
+  },
+  "RepricingApiproductsskuGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproductsskuA92FC8DD": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/products/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..products.{sku}"
+   }
+  },
+  "RepricingApiproductsskuGET8734105A": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproductssku9F6BE907"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/GET/Resource"
+   }
+  },
+  "RepricingApiproductsskuPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTproductsskuE4A39EBA": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/PUT/products/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..products.{sku}"
+   }
+  },
+  "RepricingApiproductsskuPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTproductsskuCF931F01": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/PUT/products/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..products.{sku}"
+   }
+  },
+  "RepricingApiproductsskuPUT0FFA3DC1": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "PUT",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproductssku9F6BE907"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/products/{sku}/PUT/Resource"
+   }
+  },
+  "RepricingApiproposals06BB3E19": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "proposals",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/Resource"
+   }
+  },
+  "RepricingApiproposalsOPTIONS9282188B": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproposalsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproposalsEBFAFDAB": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/proposals"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..proposals"
+   }
+  },
+  "RepricingApiproposalsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproposals8A5E311D": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/proposals"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..proposals"
+   }
+  },
+  "RepricingApiproposalsGET6E1B9FE9": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/GET/Resource"
+   }
+  },
+  "RepricingApiproposalsPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposals1E47DFC0": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/proposals"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals"
+   }
+  },
+  "RepricingApiproposalsPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalsBBA1CB65": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/proposals"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals"
+   }
+  },
+  "RepricingApiproposalsPOSTC1DD1ADE": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/POST/Resource"
+   }
+  },
+  "RepricingApiproposalsproposalIdD894D6D0": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "PathPart": "{proposalId}",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/Resource"
+   }
+  },
+  "RepricingApiproposalsproposalIdOPTIONS79E1C993": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsproposalIdD894D6D0"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproposalsproposalIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETproposalsproposalId7CC27C8E": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/proposals/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..proposals.{proposalId}"
+   }
+  },
+  "RepricingApiproposalsproposalIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETproposalsproposalId1AD56860": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/proposals/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..proposals.{proposalId}"
+   }
+  },
+  "RepricingApiproposalsproposalIdGET9CE71096": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsproposalIdD894D6D0"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/GET/Resource"
+   }
+  },
+  "RepricingApiproposalsproposalIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTproposalsproposalId9F61EE14": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/PUT/proposals/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..proposals.{proposalId}"
+   }
+  },
+  "RepricingApiproposalsproposalIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTproposalsproposalIdDE1E1C69": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/PUT/proposals/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..proposals.{proposalId}"
+   }
+  },
+  "RepricingApiproposalsproposalIdPUTD605F539": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "PUT",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsproposalIdD894D6D0"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/{proposalId}/PUT/Resource"
+   }
+  },
+  "RepricingApiproposalsbulkapproveF8F0B0DE": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "PathPart": "bulk-approve",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/Resource"
+   }
+  },
+  "RepricingApiproposalsbulkapproveOPTIONS324D288D": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsbulkapproveF8F0B0DE"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproposalsbulkapprovePOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkapprove67ECF8AF": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/proposals/bulk-approve"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-approve"
+   }
+  },
+  "RepricingApiproposalsbulkapprovePOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkapprove9B7414CA": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/proposals/bulk-approve"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-approve"
+   }
+  },
+  "RepricingApiproposalsbulkapprovePOSTEC1EC886": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsbulkapproveF8F0B0DE"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-approve/POST/Resource"
+   }
+  },
+  "RepricingApiproposalsbulkrejectB7D281CA": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "PathPart": "bulk-reject",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/Resource"
+   }
+  },
+  "RepricingApiproposalsbulkrejectOPTIONS826E675C": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsbulkrejectB7D281CA"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproposalsbulkrejectPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkrejectA2867257": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/proposals/bulk-reject"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-reject"
+   }
+  },
+  "RepricingApiproposalsbulkrejectPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalsbulkrejectBCB415B1": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/proposals/bulk-reject"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals.bulk-reject"
+   }
+  },
+  "RepricingApiproposalsbulkrejectPOST42B4E0B5": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposalsbulkrejectB7D281CA"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/bulk-reject/POST/Resource"
+   }
+  },
+  "RepricingApiproposalspush087C81E4": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiproposals06BB3E19"
+    },
+    "PathPart": "push",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/push/Resource"
+   }
+  },
+  "RepricingApiproposalspushOPTIONS6EDB053E": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiproposalspush087C81E4"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/push/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiproposalspushPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTproposalspushA7BA939E": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/proposals/push"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/push/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..proposals.push"
+   }
+  },
+  "RepricingApiproposalspushPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTproposalspushB615DE53": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/proposals/push"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/push/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..proposals.push"
+   }
+  },
+  "RepricingApiproposalspushPOST8261C405": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiproposalspush087C81E4"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/proposals/push/POST/Resource"
+   }
+  },
+  "RepricingApirulesE5324522": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "rules",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/Resource"
+   }
+  },
+  "RepricingApirulesOPTIONS24F8A0EE": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApirulesE5324522"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/OPTIONS/Resource"
+   }
+  },
+  "RepricingApirulesGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETrules9CDCD812": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/rules"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..rules"
+   }
+  },
+  "RepricingApirulesGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETrules1EA8E201": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/rules"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..rules"
+   }
+  },
+  "RepricingApirulesGET86EA79B8": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApirulesE5324522"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/GET/Resource"
+   }
+  },
+  "RepricingApirulesPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTrules20E60D0C": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/rules"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..rules"
+   }
+  },
+  "RepricingApirulesPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTrules0D723ED4": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/rules"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..rules"
+   }
+  },
+  "RepricingApirulesPOST2083B3EC": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApirulesE5324522"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/POST/Resource"
+   }
+  },
+  "RepricingApirulesruleId963CA008": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApirulesE5324522"
+    },
+    "PathPart": "{ruleId}",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/Resource"
+   }
+  },
+  "RepricingApirulesruleIdOPTIONS3E9A10B1": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApirulesruleId963CA008"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/OPTIONS/Resource"
+   }
+  },
+  "RepricingApirulesruleIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETrulesruleIdAE2972D9": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/rules/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..rules.{ruleId}"
+   }
+  },
+  "RepricingApirulesruleIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETrulesruleId81C9BA46": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/rules/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..rules.{ruleId}"
+   }
+  },
+  "RepricingApirulesruleIdGET9384458F": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApirulesruleId963CA008"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/GET/Resource"
+   }
+  },
+  "RepricingApirulesruleIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTrulesruleId99E0F10C": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/PUT/rules/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..rules.{ruleId}"
+   }
+  },
+  "RepricingApirulesruleIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTrulesruleId898AC54B": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/PUT/rules/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..rules.{ruleId}"
+   }
+  },
+  "RepricingApirulesruleIdPUTD1ECCEF6": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "PUT",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApirulesruleId963CA008"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/PUT/Resource"
+   }
+  },
+  "RepricingApirulesruleIdDELETEApiPermissionRepricingApiStackRepricingApi453CD5A3DELETErulesruleId400FAA97": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/DELETE/rules/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/DELETE/ApiPermission.RepricingApiStackRepricingApi453CD5A3.DELETE..rules.{ruleId}"
+   }
+  },
+  "RepricingApirulesruleIdDELETEApiPermissionTestRepricingApiStackRepricingApi453CD5A3DELETErulesruleId57D299C4": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/DELETE/rules/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/DELETE/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.DELETE..rules.{ruleId}"
+   }
+  },
+  "RepricingApirulesruleIdDELETE0EF43DFF": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "DELETE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApirulesruleId963CA008"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/rules/{ruleId}/DELETE/Resource"
+   }
+  },
+  "RepricingApichannels50B677BC": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "channels",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/Resource"
+   }
+  },
+  "RepricingApichannelsOPTIONSB9728981": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApichannels50B677BC"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/OPTIONS/Resource"
+   }
+  },
+  "RepricingApichannelsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETchannels4089641F": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/channels"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..channels"
+   }
+  },
+  "RepricingApichannelsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETchannels1E1750C0": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/channels"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..channels"
+   }
+  },
+  "RepricingApichannelsGET7363A733": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApichannels50B677BC"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/GET/Resource"
+   }
+  },
+  "RepricingApichannelschannelId54619E2F": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApichannels50B677BC"
+    },
+    "PathPart": "{channelId}",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/Resource"
+   }
+  },
+  "RepricingApichannelschannelIdOPTIONSFD2A721F": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApichannelschannelId54619E2F"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/OPTIONS/Resource"
+   }
+  },
+  "RepricingApichannelschannelIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETchannelschannelId793627EB": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/channels/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..channels.{channelId}"
+   }
+  },
+  "RepricingApichannelschannelIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETchannelschannelId84735BF4": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/channels/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..channels.{channelId}"
+   }
+  },
+  "RepricingApichannelschannelIdGETC1784D3A": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApichannelschannelId54619E2F"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/GET/Resource"
+   }
+  },
+  "RepricingApichannelschannelIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTchannelschannelId212AAA10": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/PUT/channels/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..channels.{channelId}"
+   }
+  },
+  "RepricingApichannelschannelIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTchannelschannelIdE715BB19": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/PUT/channels/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..channels.{channelId}"
+   }
+  },
+  "RepricingApichannelschannelIdPUT1E0AD7A2": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "PUT",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApichannelschannelId54619E2F"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/channels/{channelId}/PUT/Resource"
+   }
+  },
+  "RepricingApisyncEF6D37F5": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "sync",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/sync/Resource"
+   }
+  },
+  "RepricingApisyncOPTIONS0216C584": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApisyncEF6D37F5"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/sync/OPTIONS/Resource"
+   }
+  },
+  "RepricingApisyncPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTsync64487937": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/sync"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/sync/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..sync"
+   }
+  },
+  "RepricingApisyncPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTsync2F5AC559": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/sync"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/sync/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..sync"
+   }
+  },
+  "RepricingApisyncPOST37852603": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApisyncEF6D37F5"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/sync/POST/Resource"
+   }
+  },
+  "RepricingApianalyticsE43A5CCA": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "analytics",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/Resource"
+   }
+  },
+  "RepricingApianalyticsOPTIONSECBD5EA6": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApianalyticsE43A5CCA"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/OPTIONS/Resource"
+   }
+  },
+  "RepricingApianalyticssummary6145A999": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApianalyticsE43A5CCA"
+    },
+    "PathPart": "summary",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/summary/Resource"
+   }
+  },
+  "RepricingApianalyticssummaryOPTIONS437D0328": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApianalyticssummary6145A999"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/summary/OPTIONS/Resource"
+   }
+  },
+  "RepricingApianalyticssummaryGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETanalyticssummaryE4DADF9A": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/analytics/summary"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/summary/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..analytics.summary"
+   }
+  },
+  "RepricingApianalyticssummaryGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETanalyticssummary8264FC47": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/analytics/summary"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/summary/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..analytics.summary"
+   }
+  },
+  "RepricingApianalyticssummaryGETC2FC9B9A": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApianalyticssummary6145A999"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/summary/GET/Resource"
+   }
+  },
+  "RepricingApianalyticsmargins5CB12C3B": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApianalyticsE43A5CCA"
+    },
+    "PathPart": "margins",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/margins/Resource"
+   }
+  },
+  "RepricingApianalyticsmarginsOPTIONS60E4BF98": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApianalyticsmargins5CB12C3B"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/margins/OPTIONS/Resource"
+   }
+  },
+  "RepricingApianalyticsmarginsGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETanalyticsmarginsC59EAEA8": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/analytics/margins"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/margins/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..analytics.margins"
+   }
+  },
+  "RepricingApianalyticsmarginsGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETanalyticsmargins8095934D": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/analytics/margins"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/margins/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..analytics.margins"
+   }
+  },
+  "RepricingApianalyticsmarginsGETFADA1AA6": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApianalyticsmargins5CB12C3B"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/margins/GET/Resource"
+   }
+  },
+  "RepricingApianalyticssales0F9BD292": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApianalyticsE43A5CCA"
+    },
+    "PathPart": "sales",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/sales/Resource"
+   }
+  },
+  "RepricingApianalyticssalesOPTIONS99592980": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApianalyticssales0F9BD292"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/sales/OPTIONS/Resource"
+   }
+  },
+  "RepricingApianalyticssalesGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETanalyticssales210F1943": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/analytics/sales"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/sales/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..analytics.sales"
+   }
+  },
+  "RepricingApianalyticssalesGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETanalyticssales600AB36C": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/analytics/sales"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/sales/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..analytics.sales"
+   }
+  },
+  "RepricingApianalyticssalesGETE5B479C0": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApianalyticssales0F9BD292"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/analytics/sales/GET/Resource"
+   }
+  },
+  "RepricingApiimport66C32253": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "import",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/Resource"
+   }
+  },
+  "RepricingApiimportOPTIONSE45200BA": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiimport66C32253"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiimportcosts72BC066F": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiimport66C32253"
+    },
+    "PathPart": "costs",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/costs/Resource"
+   }
+  },
+  "RepricingApiimportcostsOPTIONSD1D16F99": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiimportcosts72BC066F"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/costs/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiimportcostsPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTimportcosts3E7EF564": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/import/costs"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/costs/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..import.costs"
+   }
+  },
+  "RepricingApiimportcostsPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTimportcostsA9824F11": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/import/costs"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/costs/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..import.costs"
+   }
+  },
+  "RepricingApiimportcostsPOST08A7A53A": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiimportcosts72BC066F"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/costs/POST/Resource"
+   }
+  },
+  "RepricingApiimportdelivery224C10D8": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApiimport66C32253"
+    },
+    "PathPart": "delivery",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/delivery/Resource"
+   }
+  },
+  "RepricingApiimportdeliveryOPTIONS50C116A0": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApiimportdelivery224C10D8"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/delivery/OPTIONS/Resource"
+   }
+  },
+  "RepricingApiimportdeliveryPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTimportdelivery17A4B944": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/import/delivery"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/delivery/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..import.delivery"
+   }
+  },
+  "RepricingApiimportdeliveryPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTimportdelivery6AC395B3": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/import/delivery"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/delivery/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..import.delivery"
+   }
+  },
+  "RepricingApiimportdeliveryPOST54292E73": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApiimportdelivery224C10D8"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/import/delivery/POST/Resource"
+   }
+  },
+  "RepricingApicarriers393A653D": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "RepricingApi99010B3B",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "carriers",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/Resource"
+   }
+  },
+  "RepricingApicarriersOPTIONSE4B04141": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApicarriers393A653D"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/OPTIONS/Resource"
+   }
+  },
+  "RepricingApicarriersGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETcarriersC372EA88": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/carriers"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..carriers"
+   }
+  },
+  "RepricingApicarriersGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETcarriersDB26EE6A": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/carriers"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..carriers"
+   }
+  },
+  "RepricingApicarriersGET3328C1E6": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApicarriers393A653D"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/GET/Resource"
+   }
+  },
+  "RepricingApicarriersPOSTApiPermissionRepricingApiStackRepricingApi453CD5A3POSTcarriers7FCE4945": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/POST/carriers"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/POST/ApiPermission.RepricingApiStackRepricingApi453CD5A3.POST..carriers"
+   }
+  },
+  "RepricingApicarriersPOSTApiPermissionTestRepricingApiStackRepricingApi453CD5A3POSTcarriers21EE241E": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/POST/carriers"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/POST/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.POST..carriers"
+   }
+  },
+  "RepricingApicarriersPOST8F95B897": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "POST",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApicarriers393A653D"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/POST/Resource"
+   }
+  },
+  "RepricingApicarrierscarrierId67E272CF": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "RepricingApicarriers393A653D"
+    },
+    "PathPart": "{carrierId}",
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/Resource"
+   }
+  },
+  "RepricingApicarrierscarrierIdOPTIONSD555AC51": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "HttpMethod": "OPTIONS",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ],
+    "ResourceId": {
+     "Ref": "RepricingApicarrierscarrierId67E272CF"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/OPTIONS/Resource"
+   }
+  },
+  "RepricingApicarrierscarrierIdGETApiPermissionRepricingApiStackRepricingApi453CD5A3GETcarrierscarrierId1E5E6A40": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/GET/carriers/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/GET/ApiPermission.RepricingApiStackRepricingApi453CD5A3.GET..carriers.{carrierId}"
+   }
+  },
+  "RepricingApicarrierscarrierIdGETApiPermissionTestRepricingApiStackRepricingApi453CD5A3GETcarrierscarrierId10DF8674": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/GET/carriers/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/GET/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.GET..carriers.{carrierId}"
+   }
+  },
+  "RepricingApicarrierscarrierIdGETBCAC53C1": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "GET",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApicarrierscarrierId67E272CF"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/GET/Resource"
+   }
+  },
+  "RepricingApicarrierscarrierIdPUTApiPermissionRepricingApiStackRepricingApi453CD5A3PUTcarrierscarrierId265A6E18": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/PUT/carriers/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/PUT/ApiPermission.RepricingApiStackRepricingApi453CD5A3.PUT..carriers.{carrierId}"
+   }
+  },
+  "RepricingApicarrierscarrierIdPUTApiPermissionTestRepricingApiStackRepricingApi453CD5A3PUTcarrierscarrierIdFAD83815": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/PUT/carriers/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/PUT/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.PUT..carriers.{carrierId}"
+   }
+  },
+  "RepricingApicarrierscarrierIdPUTC155759E": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "PUT",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApicarrierscarrierId67E272CF"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/PUT/Resource"
+   }
+  },
+  "RepricingApicarrierscarrierIdDELETEApiPermissionRepricingApiStackRepricingApi453CD5A3DELETEcarrierscarrierId6A9BCF81": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/",
+       {
+        "Ref": "RepricingApiDeploymentStageprodA850B288"
+       },
+       "/DELETE/carriers/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/DELETE/ApiPermission.RepricingApiStackRepricingApi453CD5A3.DELETE..carriers.{carrierId}"
+   }
+  },
+  "RepricingApicarrierscarrierIdDELETEApiPermissionTestRepricingApiStackRepricingApi453CD5A3DELETEcarrierscarrierIdCCA17E1E": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:",
+       {
+        "Ref": "AWS::Partition"
+       },
+       ":execute-api:eu-west-2:610274502245:",
+       {
+        "Ref": "RepricingApi99010B3B"
+       },
+       "/test-invoke-stage/DELETE/carriers/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/DELETE/ApiPermission.Test.RepricingApiStackRepricingApi453CD5A3.DELETE..carriers.{carrierId}"
+   }
+  },
+  "RepricingApicarrierscarrierIdDELETE0E9E053B": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "AuthorizationType": "NONE",
+    "HttpMethod": "DELETE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":apigateway:eu-west-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::ImportValue": "RepricingLambdaStack:ExportsOutputFnGetAttApiHandler5E7490E8Arn0C2C1F60"
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    },
+    "ResourceId": {
+     "Ref": "RepricingApicarrierscarrierId67E272CF"
+    },
+    "RestApiId": {
+     "Ref": "RepricingApi99010B3B"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/RepricingApi/Default/carriers/{carrierId}/DELETE/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WPWwrCQAxF1+L/NMq4Ah+/orQLkDiNGp1HaTIWKd271CroV07OJYRrwS4XsJhhJ4Wr74XnE/SVorsb7OTYY8MXVOrwCX1JoquGzeYcf3DlXMpRzZYan56Boo72Z6sULzS6CUqSlFtHaxQyO9JrqsfwQ9/08+TNg2EM0JfJTzp5GozHcKoRNud4oDawCKc4/J3vszZZBxNTTXCT+cNasGPXmzAXbY7KgaCc5gvZqBUPCAEAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "RepricingApiStack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "RepricingApiEndpointE1080C18": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "RepricingApi99010B3B"
+      },
+      ".execute-api.eu-west-2.",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "RepricingApiDeploymentStageprodA850B288"
+      },
+      "/"
+     ]
+    ]
+   }
+  },
+  "ApiEndpoint": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "RepricingApi99010B3B"
+      },
+      ".execute-api.eu-west-2.",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "RepricingApiDeploymentStageprodA850B288"
+      },
+      "/"
+     ]
+    ]
+   },
+   "Export": {
+    "Name": "RepricingApiEndpoint"
+   }
+  },
+  "ExportsOutputRefRepricingApi99010B3B2D32244C": {
+   "Value": {
+    "Ref": "RepricingApi99010B3B"
+   },
+   "Export": {
+    "Name": "RepricingApiStack:ExportsOutputRefRepricingApi99010B3B2D32244C"
+   }
+  },
+  "ExportsOutputRefRepricingApiDeploymentStageprodA850B288DCB1F78D": {
+   "Value": {
+    "Ref": "RepricingApiDeploymentStageprodA850B288"
+   },
+   "Export": {
+    "Name": "RepricingApiStack:ExportsOutputRefRepricingApiDeploymentStageprodA850B288DCB1F78D"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

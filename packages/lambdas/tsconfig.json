@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@repricing/core": ["../core/src/index.ts"],
+      "@repricing/core/*": ["../core/src/*"]
+    },
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../core" }]
+}

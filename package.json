@@ -1,0 +1,22 @@
+{
+  "name": "channel-engine-repricing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Repricing model for bathroom products across multiple sales channels",
+  "workspaces": [
+    "infrastructure",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "cdk": "npm run cdk --workspace=infrastructure",
+    "deploy": "npm run deploy --workspace=infrastructure"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "playwright": "^1.57.0",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.0"
+  }
+}
