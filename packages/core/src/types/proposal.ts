@@ -31,6 +31,12 @@ export interface PriceProposal {
   salesLast7Days: number;
   salesLast30Days: number;
 
+  // Impact forecasting
+  avgDailySales: number; // Units per day
+  estimatedDailyProfitChange: number; // £ per day
+  estimatedWeeklyRevenueImpact: number; // £ per week
+  estimatedWeeklyProfitImpact: number; // £ per week
+
   // Rule that triggered this
   appliedRuleId?: string;
   appliedRuleName?: string;
@@ -139,6 +145,7 @@ export interface ProposalFilters {
   batchId?: string;
   brand?: string;
   category?: string;
+  appliedRuleName?: string; // Filter by the rule that triggered the proposal
   minPriceChange?: number;
   maxPriceChange?: number;
   minMarginChange?: number;

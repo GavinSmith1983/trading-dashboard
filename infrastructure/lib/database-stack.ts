@@ -8,8 +8,9 @@ export class DatabaseStack extends cdk.Stack {
   public readonly priceProposalsTable: dynamodb.Table;
   public readonly channelConfigTable: dynamodb.Table;
   public readonly ordersTable: dynamodb.Table;
-  public readonly orderLinesTable: dynamodb.Table; // Deprecated - will be removed after Lambda stack update
+  public readonly orderLinesTable: dynamodb.Table;
   // Note: carrierCostsTable was created manually via CLI (repricing-carrier-costs)
+  // Note: Competitor URLs are stored directly on products (competitorUrls field)
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -99,16 +100,32 @@ export class DatabaseStack extends cdk.Stack {
       sortKey: { name: 'orderId', type: dynamodb.AttributeType.STRING },
     });
 
-    // Deprecated - Order Lines table (keeping reference to avoid CloudFormation export issues)
-    // The table was deleted from AWS but we need the CDK reference for clean removal
+    // Order lines table - Denormalized order lines for fast SKU-based queries
     this.orderLinesTable = new dynamodb.Table(this, 'OrderLinesTable', {
       tableName: 'repricing-order-lines',
-      partitionKey: { name: 'orderLineId', type: dynamodb.AttributeType.STRING },
+      partitionKey: { name: 'sku', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'orderDate', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecovery: true,
+    });
+
+    // GSI for querying by channel and date (for channel-level reporting)
+    this.orderLinesTable.addGlobalSecondaryIndex({
+      indexName: 'by-channel',
+      partitionKey: { name: 'channelName', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'orderDate', type: dynamodb.AttributeType.STRING },
+    });
+
+    // GSI for querying by date (for daily aggregations across all SKUs)
+    this.orderLinesTable.addGlobalSecondaryIndex({
+      indexName: 'by-date',
+      partitionKey: { name: 'orderDateDay', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sku', type: dynamodb.AttributeType.STRING },
     });
 
     // Note: Carrier costs table (repricing-carrier-costs) was created manually via CLI
+    // Note: Competitor URLs stored directly on products (competitorUrls field)
 
     // Outputs
     new cdk.CfnOutput(this, 'ProductsTableName', {
@@ -140,6 +157,5 @@ export class DatabaseStack extends cdk.Stack {
       value: this.orderLinesTable.tableName,
       exportName: 'OrderLinesTableName',
     });
-
   }
 }

@@ -26,6 +26,7 @@ export interface ProposalFilters {
   brand?: string;
   search?: string;
   hasWarnings?: boolean;
+  appliedRuleName?: string;
   page?: number;
   pageSize?: number;
 }
@@ -38,6 +39,7 @@ export const proposalsApi = {
     if (filters.brand) params.set('brand', filters.brand);
     if (filters.search) params.set('search', filters.search);
     if (filters.hasWarnings) params.set('hasWarnings', 'true');
+    if (filters.appliedRuleName) params.set('appliedRuleName', filters.appliedRuleName);
     if (filters.page) params.set('page', String(filters.page));
     if (filters.pageSize) params.set('pageSize', String(filters.pageSize));
 
@@ -111,13 +113,58 @@ export interface SalesData {
   sales: Record<string, { quantity: number; revenue: number }>;
 }
 
+// Insights types
+export interface InsightProduct {
+  sku: string;
+  title: string;
+  brand: string;
+  imageUrl?: string;
+  currentPrice: number;
+  costPrice: number;
+  deliveryCost: number;
+  stockLevel: number;
+  margin: number;
+  avgDailySales: number;
+  avgDailyRevenue: number;
+  daysOfStock: number | null;
+}
+
+export interface InsightCategory {
+  id: string;
+  title: string;
+  description: string;
+  count: number;
+  severity: 'critical' | 'warning' | 'info';
+  products: InsightProduct[];
+}
+
+export interface InsightsResponse {
+  insights: InsightCategory[];
+}
+
+// Enhanced sales response with channel and daily breakdown
+export interface SalesResponse {
+  days: number;
+  fromDate: string;
+  toDate: string;
+  skuCount: number;
+  sales: Record<string, { quantity: number; revenue: number }>;
+  totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }>;
+  totals: { quantity: number; revenue: number; orders: number };
+  channels: string[];
+  dailySales?: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>>;
+}
+
 export const analyticsApi = {
   summary: () => api.get<DashboardSummary>('/analytics/summary'),
 
   margins: () =>
     api.get<{ marginBands: Record<string, number>; total: number }>('/analytics/margins'),
 
-  sales: (days: number = 7) => api.get<SalesData>(`/analytics/sales?days=${days}`),
+  sales: (days: number = 30, includeDaily: boolean = false) =>
+    api.get<SalesResponse>(`/analytics/sales?days=${days}${includeDaily ? '&includeDaily=true' : ''}`),
+
+  insights: () => api.get<InsightsResponse>('/analytics/insights'),
 };
 
 // Import API
@@ -159,6 +206,16 @@ export interface CarrierCost {
   lastUpdated: string;
 }
 
+export interface RecalculateResult {
+  ordersWithDeliveryData: number;
+  ordersProcessed: number;
+  ordersSkipped: number;
+  skusAnalyzed: number;
+  productsUpdated: number;
+  productsUnchanged: number;
+  updatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string }>;
+}
+
 export const carriersApi = {
   list: () => api.get<{ items: CarrierCost[]; count: number }>('/carriers'),
 
@@ -171,6 +228,8 @@ export const carriersApi = {
     api.put<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`, data),
 
   delete: (carrierId: string) => api.delete(`/carriers/${encodeURIComponent(carrierId)}`),
+
+  recalculate: () => api.post<RecalculateResult>('/carriers/recalculate', {}),
 };
 
 // SKU History API
@@ -183,23 +242,32 @@ export interface SkuHistoryRecord {
   dailySales: number;
   dailyRevenue: number;
   margin?: number;
+  lowestCompetitorPrice?: number;
   recordedAt: string;
+}
+
+export interface ChannelSalesData {
+  [date: string]: {
+    [channel: string]: { quantity: number; revenue: number };
+  };
 }
 
 export interface SkuHistoryResponse {
   sku: string;
   product: Product | null;
   history: SkuHistoryRecord[];
+  channelSales?: ChannelSalesData;
   fromDate: string;
   toDate: string;
   recordCount: number;
 }
 
 export const historyApi = {
-  get: (sku: string, fromDate?: string, toDate?: string) => {
+  get: (sku: string, fromDate?: string, toDate?: string, includeChannelSales?: boolean) => {
     const params = new URLSearchParams();
     if (fromDate) params.set('fromDate', fromDate);
     if (toDate) params.set('toDate', toDate);
+    if (includeChannelSales) params.set('includeChannelSales', 'true');
     const query = params.toString();
     return api.get<SkuHistoryResponse>(`/history/${encodeURIComponent(sku)}${query ? `?${query}` : ''}`);
   },
@@ -208,4 +276,52 @@ export const historyApi = {
 // Sync API
 export const syncApi = {
   trigger: () => api.post('/sync'),
+};
+
+// Competitors API
+export interface CompetitorUrl {
+  id: string;
+  competitorName: string;
+  url: string;
+  lastPrice?: number;
+  lastScrapedAt?: string;
+  lastError?: string;
+}
+
+export interface ScrapeResult {
+  sku: string;
+  lowestPrice: number | null;
+  competitorUrls: CompetitorUrl[];
+  errors: string[];
+}
+
+export const competitorsApi = {
+  addUrl: (sku: string, url: string) =>
+    api.post<{ message: string; sku: string; competitorUrls: CompetitorUrl[] }>('/competitors/add-url', { sku, url }),
+
+  removeUrl: (sku: string, urlId: string) =>
+    api.delete<{ message: string; sku: string; competitorUrls: CompetitorUrl[] }>(
+      '/competitors/remove-url',
+      { sku, urlId }
+    ),
+
+  scrapeSingle: (sku: string) =>
+    api.post<ScrapeResult>(`/competitors/scrape/${encodeURIComponent(sku)}`),
+
+  scrapeAll: () =>
+    api.post<{ message: string; totalProducts: number; successCount: number; errorCount: number }>('/competitors/scrape'),
+};
+
+// Prices API
+export interface PriceUpdateResult {
+  success: boolean;
+  message: string;
+  sku: string;
+  channelId: string;
+  price: number;
+}
+
+export const pricesApi = {
+  updateChannelPrice: (sku: string, channelId: string, price: number) =>
+    api.put<PriceUpdateResult>(`/prices/${encodeURIComponent(sku)}`, { channelId, price }),
 };

@@ -26,6 +26,9 @@ export interface Product {
   costPrice: number; // COGS
   deliveryCost: number; // Fixed per product
 
+  // Physical dimensions (from ChannelEngine)
+  weight?: number; // Weight in kg
+
   // Inventory (from ChannelEngine)
   stockLevel: number;
   stockLastUpdated?: string;
@@ -39,6 +42,11 @@ export interface Product {
   calculatedMargin?: number;
   calculatedProfit?: number;
 
+  // Competitor monitoring
+  competitorUrls?: CompetitorUrl[];
+  competitorFloorPrice?: number; // Lowest competitor price from last scrape
+  competitorPricesLastUpdated?: string;
+
   // Metadata
   lastUpdated: string;
   lastSyncedFromSheet?: string;
@@ -46,11 +54,26 @@ export interface Product {
 }
 
 /**
- * Per-channel pricing (for future multi-channel pricing)
+ * Competitor URL for price monitoring
+ */
+export interface CompetitorUrl {
+  id: string; // Unique ID for this entry
+  competitorName: string; // e.g., "Victorian Plumbing"
+  url: string; // URL to scrape
+  lastPrice?: number; // Last scraped price
+  lastScrapedAt?: string; // ISO timestamp
+  lastError?: string; // Last error message if scraping failed
+}
+
+/**
+ * Per-channel pricing
+ * Note: eBay pricing is also used for OnBuy and Debenhams
  */
 export interface ChannelPrices {
   amazon?: number;
   ebay?: number;
+  onbuy?: number; // Uses same price as eBay
+  debenhams?: number; // Uses same price as eBay
   bandq?: number;
   manomano?: number;
   shopify?: number;
@@ -58,21 +81,15 @@ export interface ChannelPrices {
 
 /**
  * Product data as it comes from the Google Sheet
+ * Only Column C (Balterley SKU) and Columns F-J (channel pricing) are used
  */
 export interface GoogleSheetProduct {
-  brandName: string;
-  productSku: string;
-  balterleySku: string;
-  familyVariants: string;
-  mrp: number;
-  bandqPricing: number;
-  amazonPricing: number;
-  ebayPricing: number;
-  manoManoPricing: number;
-  shopifyPricing: number;
-  discountStartDate?: string;
-  discountEndDate?: string;
-  discountPrice?: number;
+  balterleySku: string;        // Column C - used for matching
+  bandqPricing: number;        // Column F
+  amazonPricing: number;       // Column G
+  ebayPricing: number;         // Column H (also used for OnBuy and Debenhams)
+  manoManoPricing: number;     // Column I
+  shopifyPricing: number;      // Column J
 }
 
 /**
@@ -97,6 +114,7 @@ export interface ChannelEngineProduct {
   price: number; // Current price in ChannelEngine
   categoryTrail?: string;
   imageUrl?: string; // Main product image URL
+  weight?: number; // Weight in kg
 }
 
 /**

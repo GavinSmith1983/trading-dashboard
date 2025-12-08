@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Truck, Plus, Trash2 } from 'lucide-react';
+import { Save, Truck, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { carriersApi } from '../api';
-import type { CarrierCost } from '../api';
+import type { CarrierCost, RecalculateResult } from '../api';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
@@ -16,6 +16,7 @@ export default function DeliveryCosts() {
   const [formData, setFormData] = useState<Partial<CarrierCost>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCarrier, setNewCarrier] = useState({ carrierName: '', costPerParcel: 0 });
+  const [recalculateResult, setRecalculateResult] = useState<RecalculateResult | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['carriers'],
@@ -44,6 +45,14 @@ export default function DeliveryCosts() {
     mutationFn: (carrierId: string) => carriersApi.delete(carrierId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['carriers'] });
+    },
+  });
+
+  const recalculateMutation = useMutation({
+    mutationFn: () => carriersApi.recalculate(),
+    onSuccess: (result) => {
+      setRecalculateResult(result);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 
@@ -157,13 +166,83 @@ export default function DeliveryCosts() {
         </Card>
       </div>
 
-      {/* Add New Carrier Button */}
-      <div className="mb-6">
+      {/* Action Buttons */}
+      <div className="mb-6 flex gap-3">
         <Button onClick={() => setShowAddForm(true)} disabled={showAddForm}>
           <Plus className="h-4 w-4 mr-1" />
           Add Carrier
         </Button>
+        <Button
+          variant="secondary"
+          onClick={() => recalculateMutation.mutate()}
+          disabled={recalculateMutation.isPending}
+        >
+          <RefreshCw className={`h-4 w-4 mr-1 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
+          {recalculateMutation.isPending ? 'Recalculating...' : 'Recalculate All Delivery Costs'}
+        </Button>
       </div>
+
+      {/* Recalculation Results */}
+      {recalculateResult && (
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <h3 className="font-semibold text-green-900">Recalculation Complete</h3>
+            <button
+              onClick={() => setRecalculateResult(null)}
+              className="text-green-600 hover:text-green-800 text-sm"
+            >
+              Dismiss
+            </button>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <p className="text-sm text-green-700">Orders Analyzed</p>
+                <p className="text-lg font-semibold text-green-900">{recalculateResult.ordersProcessed}</p>
+              </div>
+              <div>
+                <p className="text-sm text-green-700">SKUs Analyzed</p>
+                <p className="text-lg font-semibold text-green-900">{recalculateResult.skusAnalyzed}</p>
+              </div>
+              <div>
+                <p className="text-sm text-green-700">Products Updated</p>
+                <p className="text-lg font-semibold text-green-900">{recalculateResult.productsUpdated}</p>
+              </div>
+              <div>
+                <p className="text-sm text-green-700">Unchanged</p>
+                <p className="text-lg font-semibold text-green-900">{recalculateResult.productsUnchanged}</p>
+              </div>
+            </div>
+            {recalculateResult.updatedSkus && recalculateResult.updatedSkus.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-green-800 mb-2">Updated Products:</p>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-green-700">
+                        <th className="pb-1">SKU</th>
+                        <th className="pb-1">Old Cost</th>
+                        <th className="pb-1">New Cost</th>
+                        <th className="pb-1">Carrier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recalculateResult.updatedSkus.map((item) => (
+                        <tr key={item.sku} className="border-t border-green-200">
+                          <td className="py-1 font-mono text-xs">{item.sku}</td>
+                          <td className="py-1">£{item.oldCost.toFixed(2)}</td>
+                          <td className="py-1 font-medium">£{item.newCost.toFixed(2)}</td>
+                          <td className="py-1">{item.carrier}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add New Carrier Form */}
       {showAddForm && (

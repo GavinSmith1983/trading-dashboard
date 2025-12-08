@@ -12,6 +12,8 @@ export interface Product {
   channelPrices?: {
     amazon?: number;
     ebay?: number;
+    onbuy?: number;
+    debenhams?: number;
     bandq?: number;
     manomano?: number;
     shopify?: number;
@@ -62,12 +64,21 @@ export interface PricingRuleConditions {
   brands?: string[];
   categories?: string[];
   skus?: string[];
+  skuPatterns?: string[];
   marginBelow?: number;
   marginAbove?: number;
   stockBelow?: number;
   stockAbove?: number;
   salesVelocityBelow?: number;
   salesVelocityAbove?: number;
+  dailySalesBelow?: number;
+  dailySalesAbove?: number;
+  daysOfStockBelow?: number;
+  daysOfStockAbove?: number;
+  priceBelow?: number;
+  priceAbove?: number;
+  dailyRevenueBelow?: number;
+  dailyRevenueAbove?: number;
 }
 
 export interface PricingRuleAction {
@@ -110,6 +121,13 @@ export interface PriceProposal {
   stockLevel: number;
   salesLast7Days: number;
   salesLast30Days: number;
+  // Impact forecasting
+  avgDailySales: number;
+  estimatedDailyProfitChange: number;
+  estimatedWeeklyRevenueImpact: number;
+  estimatedWeeklyProfitImpact: number;
+  // Rule info
+  appliedRuleId?: string;
   appliedRuleName?: string;
   reason: string;
   warnings: string[];

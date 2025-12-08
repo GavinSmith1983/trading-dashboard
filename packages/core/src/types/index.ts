@@ -6,3 +6,4 @@ export * from './proposal';
 export * from './order';
 export * from './carrier';
 export * from './sku-history';
+export * from './competitor';

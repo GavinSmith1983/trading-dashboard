@@ -32,7 +32,12 @@ export async function handler(event: ScheduledEvent, context: Context): Promise<
     const existingMap = new Map(existingProducts.map((p) => [p.sku, p]));
     console.log(`[DB] Found ${existingProducts.length} existing products`);
 
-    // 2. Fetch products from ChannelEngine and SAVE EACH BATCH IMMEDIATELY
+    // 2. Fetch Google Sheets data for channel pricing enrichment
+    console.log('[SHEETS] Fetching Google Sheets data for channel prices...');
+    const sheetData = await fetchFromGoogleSheets();
+    console.log(`[SHEETS] Loaded ${sheetData.size} products from Google Sheets`);
+
+    // 3. Fetch products from ChannelEngine and SAVE EACH BATCH IMMEDIATELY
     console.log('[CE] Starting incremental fetch and save...');
 
     const secretArn = process.env.CHANNEL_ENGINE_SECRET_ARN;
@@ -48,6 +53,28 @@ export async function handler(event: ScheduledEvent, context: Context): Promise<
       const productsToSave: Product[] = batchProducts.map((ceProduct) => {
         const sku = ceProduct.merchantProductNo;
         const existing = existingMap.get(sku);
+        // Match ChannelEngine SKU against Balterley SKU (Column C) in Google Sheet
+        const sheetProduct = sheetData.get(sku) || sheetData.get(sku.toUpperCase()) || sheetData.get(sku.toLowerCase()) || sheetData.get(sku.trim());
+
+        // Debug: log if a product with pricing in CE doesn't match the sheet
+        if (!sheetProduct && ceProduct.price > 0) {
+          // Only log first few unmatched to avoid spam
+          if (page === 1 || sku === 'BTMI304') {
+            console.log(`[DEBUG] No sheet match for SKU: "${sku}" (CE price: ${ceProduct.price})`);
+          }
+        }
+
+        // Build channel prices from Google Sheets
+        // Note: eBay pricing column also applies to OnBuy and Debenhams
+        const channelPrices = sheetProduct ? {
+          amazon: sheetProduct.amazonPricing || undefined,
+          ebay: sheetProduct.ebayPricing || undefined,
+          onbuy: sheetProduct.ebayPricing || undefined, // Uses same price as eBay
+          debenhams: sheetProduct.ebayPricing || undefined, // Uses same price as eBay
+          bandq: sheetProduct.bandqPricing || undefined,
+          manomano: sheetProduct.manoManoPricing || undefined,
+          shopify: sheetProduct.shopifyPricing || undefined,
+        } : existing?.channelPrices;
 
         return {
           sku,
@@ -57,14 +84,20 @@ export async function handler(event: ScheduledEvent, context: Context): Promise<
           imageUrl: ceProduct.imageUrl || existing?.imageUrl,
           mrp: existing?.mrp || 0,
           currentPrice: ceProduct.price,
+          channelPrices,
           costPrice: existing?.costPrice || 0,
           deliveryCost: existing?.deliveryCost || 0,
+          weight: ceProduct.weight || existing?.weight,
           stockLevel: ceProduct.stock,
           stockLastUpdated: timestamp,
           salesLast7Days: existing?.salesLast7Days || 0,
           salesLast30Days: existing?.salesLast30Days || 0,
           lastUpdated: timestamp,
           lastSyncedFromChannelEngine: timestamp,
+          lastSyncedFromSheet: sheetProduct ? timestamp : existing?.lastSyncedFromSheet,
+          // Preserve competitor data from existing product
+          competitorUrls: existing?.competitorUrls,
+          competitorFloorPrice: existing?.competitorFloorPrice,
         };
       });
 
@@ -72,12 +105,15 @@ export async function handler(event: ScheduledEvent, context: Context): Promise<
       await db.batchPutProducts(productsToSave);
       totalSaved += productsToSave.length;
       totalProducts = total;
-      console.log(`[DB] Saved batch ${page}: ${productsToSave.length} products (${totalSaved}/${total} total saved)`);
+
+      // Count how many had sheet data
+      const withSheetData = productsToSave.filter(p => p.channelPrices).length;
+      console.log(`[DB] Saved batch ${page}: ${productsToSave.length} products (${withSheetData} with channel prices) (${totalSaved}/${total} total saved)`);
     });
 
     console.log(`[DONE] Data sync complete: ${totalSaved} products saved to DynamoDB`);
 
-    // 3. Record daily history snapshot for each SKU
+    // 4. Record daily history snapshot for each SKU
     console.log('[HISTORY] Recording daily history snapshots...');
     await recordDailyHistory(db);
     console.log('[HISTORY] History snapshots recorded');
@@ -123,24 +159,67 @@ async function fetchFromChannelEngine(): Promise<{
 async function fetchFromGoogleSheets(): Promise<Map<string, GoogleSheetProduct>> {
   const secretArn = process.env.GOOGLE_SHEETS_SECRET_ARN;
   if (!secretArn) {
-    console.warn('GOOGLE_SHEETS_SECRET_ARN not configured - skipping Sheets enrichment');
+    console.warn('[SHEETS] GOOGLE_SHEETS_SECRET_ARN not configured - skipping Sheets enrichment');
     return new Map();
   }
 
   try {
+    console.log('[SHEETS] Initializing Google Sheets service...');
     const sheetsService = await createGoogleSheetsService(secretArn);
-    const sheetProducts = await sheetsService.fetchProducts();
 
-    // Create lookup map by SKU
-    const map = new Map<string, GoogleSheetProduct>();
-    for (const product of sheetProducts) {
-      if (product.productSku) {
-        map.set(product.productSku, product);
+    // Try to get available sheet names
+    let sheetNames: string[] = [];
+    try {
+      sheetNames = await sheetsService.getSheetNames();
+      console.log(`[SHEETS] Available sheets: ${sheetNames.join(', ')}`);
+    } catch (err) {
+      console.warn('[SHEETS] Could not get sheet names:', err);
+    }
+
+    // Try fetching from 'Pricing' sheet first, then 'Sheet1'
+    const sheetsToTry = ['Pricing', 'Sheet1', ...sheetNames.filter(n => n !== 'Pricing' && n !== 'Sheet1')];
+    let sheetProducts: GoogleSheetProduct[] = [];
+
+    for (const sheetName of sheetsToTry) {
+      try {
+        console.log(`[SHEETS] Trying to fetch from sheet: ${sheetName}`);
+        sheetProducts = await sheetsService.fetchProducts(sheetName);
+        if (sheetProducts.length > 0) {
+          console.log(`[SHEETS] Found ${sheetProducts.length} products in sheet: ${sheetName}`);
+          break;
+        }
+      } catch (err) {
+        console.log(`[SHEETS] Sheet '${sheetName}' not accessible or empty`);
       }
     }
+
+    if (sheetProducts.length === 0) {
+      console.warn('[SHEETS] No products found in any sheet');
+      return new Map();
+    }
+
+    // Create lookup map by Balterley SKU (column C) - this is the ONLY column used for matching
+    // ChannelEngine SKUs must match the Balterley SKU in Column C of the Google Sheet
+    const map = new Map<string, GoogleSheetProduct>();
+    for (const product of sheetProducts) {
+      // Match by Balterley SKU (column C) only - case insensitive
+      if (product.balterleySku) {
+        const key = product.balterleySku.trim();
+        map.set(key, product);
+        map.set(key.toUpperCase(), product);
+        map.set(key.toLowerCase(), product);
+      }
+    }
+
+    // Log sample of what we found
+    const sample = sheetProducts.slice(0, 3);
+    console.log('[SHEETS] Sample products (Column C - Balterley SKU used for matching):',
+      sample.map(p => ({ balterleySku: p.balterleySku, amazon: p.amazonPricing, ebay: p.ebayPricing, bandq: p.bandqPricing })));
+    console.log(`[SHEETS] Map has ${map.size} entries (indexed by Balterley SKU column C only)`);
+
     return map;
   } catch (error) {
-    console.error('Google Sheets fetch failed:', error);
+    console.error('[SHEETS] Google Sheets fetch failed:', error);
     return new Map();
   }
 }
@@ -190,25 +269,23 @@ function buildProducts(
       // Core identifiers from ChannelEngine
       sku,
       title: ceProduct.name || sku,
-      brand: sheetProduct?.brandName || ceProduct.brand || 'Unknown',
+      brand: ceProduct.brand || 'Unknown',
       category: ceProduct.categoryTrail || 'Uncategorized',
       imageUrl: ceProduct.imageUrl || existing?.imageUrl,
 
-      // Enrichment from Google Sheets
+      // Channel prices from Google Sheet (only data we use from sheet)
       balterleySku: sheetProduct?.balterleySku || existing?.balterleySku,
-      familyVariants: sheetProduct?.familyVariants || existing?.familyVariants,
-      mrp: sheetProduct?.mrp || existing?.mrp || 0,
+      mrp: existing?.mrp || 0,
       currentPrice,
       channelPrices,
-
-      // Discount info from Sheets
-      discountPrice: sheetProduct?.discountPrice,
-      discountStartDate: sheetProduct?.discountStartDate,
-      discountEndDate: sheetProduct?.discountEndDate,
 
       // Cost data preserved from existing DB (updated via CSV import)
       costPrice: existing?.costPrice || 0,
       deliveryCost: existing?.deliveryCost || 0,
+
+      // Competitor data preserved from existing DB
+      competitorUrls: existing?.competitorUrls,
+      competitorFloorPrice: existing?.competitorFloorPrice,
 
       // Stock from ChannelEngine
       stockLevel: ceProduct.stock,
@@ -233,7 +310,7 @@ function buildProducts(
 
 /**
  * Record daily history snapshot for all products
- * Captures price, stock, and daily sales for historical tracking
+ * Captures price, stock, daily sales, and competitor prices for historical tracking
  */
 async function recordDailyHistory(db: ReturnType<typeof createDynamoDBService>): Promise<void> {
   const today = new Date().toISOString().substring(0, 10); // YYYY-MM-DD
@@ -266,20 +343,40 @@ async function recordDailyHistory(db: ReturnType<typeof createDynamoDBService>):
     const ppo = priceExVat - clawback - (product.deliveryCost || 0) - (product.costPrice || 0);
     const margin = priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
 
+    // Build competitor price snapshots from last scraped data
+    const competitorPrices = product.competitorUrls
+      ?.filter((url) => url.lastPrice !== undefined && url.lastPrice > 0)
+      .map((url) => ({
+        competitorName: url.competitorName,
+        price: url.lastPrice!,
+        url: url.url,
+      }));
+
+    // Calculate lowest competitor price
+    const lowestCompetitorPrice = competitorPrices && competitorPrices.length > 0
+      ? Math.min(...competitorPrices.map((c) => c.price))
+      : undefined;
+
     return {
       sku: product.sku,
       date: today,
       price: product.currentPrice || 0,
       costPrice: product.costPrice || 0,
+      deliveryCost: product.deliveryCost || 0,
       stockLevel: product.stockLevel || 0,
       dailySales: dailySales.quantity,
       dailyRevenue: dailySales.revenue,
       margin: Math.round(margin * 100) / 100, // Round to 2 decimal places
+      lowestCompetitorPrice,
+      competitorPrices: competitorPrices && competitorPrices.length > 0 ? competitorPrices : undefined,
       recordedAt: timestamp,
     };
   });
 
   // Save in batches
   await db.batchPutSkuHistory(historyRecords);
-  console.log(`[HISTORY] Saved ${historyRecords.length} history records for ${today}`);
+
+  // Count products with competitor data
+  const productsWithCompetitorData = historyRecords.filter((r) => r.competitorPrices && r.competitorPrices.length > 0).length;
+  console.log(`[HISTORY] Saved ${historyRecords.length} history records for ${today} (${productsWithCompetitorData} with competitor prices)`);
 }

@@ -33,8 +33,9 @@ An automated repricing system for bathroom products sold across multiple sales c
 | Current Prices | ChannelEngine | ChannelEngine API |
 | Sales & Stock | ChannelEngine | ChannelEngine API |
 | Orders & Revenue | ChannelEngine | ChannelEngine Orders API |
+| Product Weight | ChannelEngine | ChannelEngine API (standard or ExtraData field) |
 | Product Costs (COGS) | Google Sheet | Google Sheets API |
-| Delivery Costs | Manual | Fixed per SKU, configured in system |
+| Delivery Costs | Calculated | From order data (Vector Summary) + category averages |
 | Channel Fees | Configuration | Set in system (Amazon 15%, eBay 12.8%, etc.) |
 | Advertising Costs | Configuration | ACOS % or fixed per channel |
 
@@ -66,11 +67,12 @@ An automated repricing system for bathroom products sold across multiple sales c
 │       └──▶ order-sync Lambda ──▶ Pulls orders from CE          │
 │                                                                 │
 │  DynamoDB Tables:                                               │
-│    • repricing-products (SKU, costs, prices, stock)            │
+│    • repricing-products (SKU, costs, prices, stock, weight)    │
 │    • repricing-rules (pricing rules configuration)              │
 │    • repricing-proposals (pending price changes)                │
 │    • repricing-channels (channel fee configuration)             │
 │    • repricing-orders (order data with nested line items)       │
+│    • repricing-carriers (carrier costs for delivery calc)       │
 │                                                                 │
 │  API Gateway ──▶ api Lambda ──▶ REST API for frontend          │
 │                                                                 │
@@ -83,12 +85,14 @@ An automated repricing system for bathroom products sold across multiple sales c
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Weekly Workflow
+## Daily/Weekly Workflow
 
-1. **Sunday 10pm:** Data sync Lambda pulls latest data from ChannelEngine and Google Sheets
-2. **Monday 6am:** Price calculator Lambda applies rules, generates proposals
-3. **Mon-Thu:** Human reviews proposals in approval UI
-4. **Friday:** Approved prices pushed to ChannelEngine
+1. **Daily 4am UTC:** Competitor scrape Lambda scrapes competitor prices for products with URLs configured
+2. **Daily 5am UTC:** Data sync Lambda pulls latest data from ChannelEngine and Google Sheets, records daily history
+3. **Daily 6am UTC:** Order sync Lambda pulls new orders from ChannelEngine
+4. **Monday 7am UTC:** Price calculator Lambda applies rules, generates proposals
+5. **Mon-Thu:** Human reviews proposals in approval UI
+6. **Friday:** Approved prices pushed to ChannelEngine
 
 ## Profit Calculation Formula
 
@@ -113,7 +117,8 @@ channel-engine-repricing/
 │       ├── database-stack.ts
 │       ├── lambda-stack.ts
 │       ├── api-stack.ts
-│       └── frontend-stack.ts
+│       ├── frontend-stack.ts
+│       └── auth-stack.ts
 ├── packages/
 │   ├── core/                 # Shared types & services
 │   │   ├── src/types/
@@ -141,21 +146,54 @@ channel-engine-repricing/
 
 ### Completed
 - AWS CDK infrastructure (all stacks deployed)
-- Data sync from ChannelEngine (6,200+ products with images)
+- Data sync from ChannelEngine (6,200+ products with images, weight)
 - Data sync from Google Sheets (cost data)
 - Order sync from ChannelEngine (orders with nested line items)
 - 180-day sales analytics per SKU (optimized with parallel batch queries)
 - Pricing rules engine with margin calculation
 - React frontend with approval workflow
 - Dashboard with stats and quick actions
-- Proposals page with approve/reject/modify
+- **Insights page** with product health cards (replaced Proposals)
 - Products page with thumbnails, cost editing, sortable columns
 - Product Detail page with redesigned 3-section layout
 - Channels page for fee configuration
 - Pricing Rules page for rule management
-- Delivery Costs page for delivery cost management
+- Delivery Costs page with carrier management and recalculation
 - Import page for CSV cost uploads with enhanced diagnostics
 - SKU History tracking with daily snapshots
+- **Delivery cost calculation from order data (Vector Summary imports)**
+
+### Insights Page Features
+Seven insight cards to identify product health issues:
+
+| Card | Criteria | Severity |
+|------|----------|----------|
+| Low Sales & High Margin | Sales < 0.25/day, margin > 40%, in stock | Info |
+| Danger Stock | Sales > 0.5/day, stock < 14 days | Critical |
+| Out of Stock (High Demand) | Sales > 0.5/day, stock = 0 | Critical |
+| Low Margin | Margin 0-25% | Warning |
+| Negative Margin | Margin < 0% | Critical |
+| Missing Price | No price set | Critical |
+| Missing Title | No title | Warning |
+
+- Expandable cards showing product tables
+- Sorted by severity (critical first)
+- Links to product detail page
+- Summary counts for critical/warning issues
+
+### Delivery Cost Calculation
+Delivery costs are calculated from real order data:
+
+1. **Vector Summary Import:** Upload warehouse delivery data (carrier, parcels per order)
+2. **Carrier Cost Configuration:** Set cost per parcel for each carrier
+3. **Recalculate:** Processes all orders to calculate delivery cost per SKU
+   - Proportionally splits order delivery cost by line item value
+   - Calculates average delivery cost per unit sold
+
+**Automatic Fill Rules:**
+- Products without order data get category average (from products with order data)
+- Products with "Suite" in title → £45 delivery cost
+- Products with weight > 30kg → £45 delivery cost
 
 ### Import Features
 - Case-insensitive SKU matching
@@ -173,6 +211,9 @@ channel-engine-repricing/
 - Stock levels with color coding
 - Inline navigation to product detail page
 - 180-day avg daily sales and revenue per SKU
+- **Filters:** Stock (All/In Stock/Out of Stock), Missing Cost toggle, Margin filter (All/Negative/Low/Good)
+- **Pagination:** Page size selector (25/50/100/200), First/Prev/Next/Last navigation
+- **Listing count:** Shows filtered count vs total products
 
 ### Product Detail Page Features (Redesigned)
 Three-section layout following merchandiser workflow:
@@ -209,8 +250,17 @@ Three-section layout following merchandiser workflow:
 ### SKU History Features
 - Daily snapshots recorded during data sync
 - Historical price, stock, and sales tracking
+- Competitor price tracking (lowest competitor, all competitor prices with URLs)
 - Backfill endpoint to populate from existing orders
 - 180-day history retention
+
+### Competitor Price Tracking
+- Add competitor URLs per product via Product Detail page
+- Daily scraping at 4am UTC extracts prices from competitor sites
+- Supports various price formats (JSON-LD, meta tags, element extraction)
+- Handles VAT correctly (ex-VAT sites automatically have VAT added)
+- Competitor prices shown on Product Detail chart as red dashed line
+- Historical competitor prices stored in SKU history
 
 ### Data Currently Synced
 - **Products:** 6,200+ SKUs with prices, stock levels, costs, images
@@ -233,12 +283,17 @@ Three-section layout following merchandiser workflow:
 | POST | /proposals/push | Push to ChannelEngine |
 | GET/POST | /rules | Manage pricing rules |
 | GET/PUT | /channels/{id} | Channel configuration |
+| GET | /carriers | List all carriers |
+| POST | /carriers | Create/update carrier |
+| POST | /carriers/recalculate | Recalculate all delivery costs |
 | GET | /analytics/summary | Dashboard summary stats |
 | GET | /analytics/margins | Margin analysis |
 | GET | /analytics/sales?days=N | N-day sales by SKU (default 180) |
+| GET | /analytics/insights | Product health insights |
 | GET | /history/{sku} | Get SKU history (price, stock, sales) |
 | POST | /history/backfill | Backfill history from orders |
 | POST | /import/costs | Upload cost CSV |
+| POST | /import/delivery | Import Vector Summary delivery data |
 | POST | /sync | Trigger manual data sync |
 
 ## Credentials (AWS Secrets Manager)
@@ -255,7 +310,9 @@ Three-section layout following merchandiser workflow:
 | repricing-proposals | proposalId | - | by-status, by-sku |
 | repricing-channels | channelId | - | - |
 | repricing-orders | orderId | - | by-channel, by-date |
+| repricing-order-lines | orderLineId | - | by-sku-date |
 | repricing-sku-history | sku | date | - |
+| repricing-carriers | carrierId | - | - |
 
 ### Order Data Structure
 Orders are stored with nested line items (single table design):
@@ -276,9 +333,10 @@ interface Order {
 
 | Function | Schedule | Timeout | Memory |
 |----------|----------|---------|--------|
-| repricing-data-sync | Sunday 10pm | 15 min | 1024 MB |
-| repricing-price-calculator | Monday 6am | 5 min | 512 MB |
-| repricing-order-sync | Manual | 15 min | 1024 MB |
+| repricing-competitor-scrape | Daily 4am UTC | 15 min | 512 MB |
+| repricing-data-sync | Daily 5am UTC | 15 min | 1024 MB |
+| repricing-order-sync | Daily 6am UTC | 15 min | 1024 MB |
+| repricing-price-calculator | Monday 7am UTC | 5 min | 512 MB |
 | repricing-api | On-demand | 5 min | 1024 MB |
 
 ## Running Locally
@@ -327,6 +385,37 @@ aws lambda invoke --function-name repricing-order-sync \
 aws dynamodb scan --table-name repricing-orders --select COUNT
 ```
 
+### Product Detail Chart Features
+- Interactive line chart showing historical data
+- Toggle lines on/off by clicking legend items
+- Shows: Price, Stock, Revenue, Margin %, Lowest Competitor
+- Values limited to 2 decimal places
+- Fills missing days but shows gaps for missing data (doesn't assume values)
+- Uses UTC dates to avoid timezone issues
+
+### Authentication
+- AWS Cognito user pool (RepricingAuthStack)
+- Login page with email/password
+- User groups: admin, editor, viewer
+- Admin user: gavin.smith@roxorgroup.com
+
+### Channel Pricing (Google Sheet Integration)
+- **Column C (Balterley SKU):** Primary key for matching ChannelEngine products
+- **Columns F-J:** Channel-specific prices (B&Q, Amazon, eBay, ManoMano, Shopify)
+- **eBay pricing** also applies to OnBuy and Debenhams channels
+- Price updates via Product Detail page write back to Google Sheet
+- Data sync pulls channel prices during daily sync
+
 ---
 
-*Last updated: 2nd December 2024 - Product Detail page redesign with 3-section layout, live margin preview, Days of Stock metric, SKU history tracking, product images, 180-day sales analytics*
+*Last updated: 3rd December 2025*
+
+**Recent Changes:**
+- Products page: Added filters (stock, missing cost, margin) and pagination
+- Google Sheet integration simplified: Only Column C (SKU) and F-J (prices) are read
+- Brand data now sourced from ChannelEngine only (not Google Sheet)
+- Order-lines table added for faster sales analytics queries
+- Daily competitor price scraping (was weekly)
+- Early morning sync schedules (4am-7am UTC, was evening)
+- Competitor prices tracked in daily history and shown on charts
+- Data sync preserves user-entered competitor URLs

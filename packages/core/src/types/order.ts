@@ -66,6 +66,38 @@ export interface OrderLine {
 }
 
 /**
+ * Denormalized order line record for fast SKU-based queries
+ * Stored in repricing-order-lines table
+ */
+export interface OrderLineRecord {
+  // Keys
+  sku: string;                    // Partition key
+  orderDate: string;              // Sort key: "ISO-timestamp#orderId" for uniqueness
+
+  // Order context
+  orderId: string;
+  channelName: string;
+  channelId: number;
+  orderDateDay: string;           // YYYY-MM-DD for daily grouping
+
+  // Line item data
+  quantity: number;
+  unitPriceInclVat: number;
+  unitPriceExclVat: number;
+  lineTotalInclVat: number;
+  lineTotalExclVat: number;
+  lineVat: number;
+  vatRate: number;
+
+  // Optional metadata
+  description?: string;
+  gtin?: string;
+
+  // Timestamps
+  syncedAt: string;
+}
+
+/**
  * Order stored in DynamoDB (with nested lines)
  */
 export interface Order {

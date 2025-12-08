@@ -17,6 +17,7 @@ import {
   ProposalFilters,
   PaginatedProposals,
   Order,
+  OrderLineRecord,
   CarrierCost,
   SkuHistoryRecord,
 } from '../types';
@@ -31,6 +32,7 @@ export class DynamoDBService {
   private proposalsTable: string;
   private channelsTable: string;
   private ordersTable: string;
+  private orderLinesTable: string;
   private carrierCostsTable: string;
   private skuHistoryTable: string;
 
@@ -40,6 +42,7 @@ export class DynamoDBService {
     proposalsTable: string;
     channelsTable: string;
     ordersTable?: string;
+    orderLinesTable?: string;
     carrierCostsTable?: string;
     skuHistoryTable?: string;
   }) {
@@ -53,6 +56,7 @@ export class DynamoDBService {
     this.proposalsTable = config.proposalsTable;
     this.channelsTable = config.channelsTable;
     this.ordersTable = config.ordersTable || 'repricing-orders';
+    this.orderLinesTable = config.orderLinesTable || 'repricing-order-lines';
     this.carrierCostsTable = config.carrierCostsTable || 'repricing-carrier-costs';
     this.skuHistoryTable = config.skuHistoryTable || 'repricing-sku-history';
   }
@@ -257,18 +261,31 @@ export class DynamoDBService {
       expressionAttributeValues[':zero'] = 0;
     }
 
-    const result = await this.docClient.send(
-      new ScanCommand({
-        TableName: this.proposalsTable,
-        FilterExpression: filterExpressions.length > 0 ? filterExpressions.join(' AND ') : undefined,
-        ExpressionAttributeNames:
-          Object.keys(expressionAttributeNames).length > 0 ? expressionAttributeNames : undefined,
-        ExpressionAttributeValues:
-          Object.keys(expressionAttributeValues).length > 0 ? expressionAttributeValues : undefined,
-      })
-    );
+    if (filters.appliedRuleName) {
+      filterExpressions.push('appliedRuleName = :appliedRuleName');
+      expressionAttributeValues[':appliedRuleName'] = filters.appliedRuleName;
+    }
 
-    let items = (result.Items as PriceProposal[]) || [];
+    // Paginate through all scan results (DynamoDB returns max 1MB per scan)
+    let items: PriceProposal[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new ScanCommand({
+          TableName: this.proposalsTable,
+          FilterExpression: filterExpressions.length > 0 ? filterExpressions.join(' AND ') : undefined,
+          ExpressionAttributeNames:
+            Object.keys(expressionAttributeNames).length > 0 ? expressionAttributeNames : undefined,
+          ExpressionAttributeValues:
+            Object.keys(expressionAttributeValues).length > 0 ? expressionAttributeValues : undefined,
+          ExclusiveStartKey: lastKey,
+        })
+      );
+
+      items = items.concat((result.Items as PriceProposal[]) || []);
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
 
     // Apply search filter (client-side for simplicity)
     if (filters.searchTerm) {
@@ -280,8 +297,33 @@ export class DynamoDBService {
       );
     }
 
-    // Sort by createdAt descending
-    items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Sort by impact - prioritize products that are selling and in stock
+    // 1. In-stock items with sales come first (sorted by sales descending)
+    // 2. In-stock items without sales come next
+    // 3. Out-of-stock items come last
+    items.sort((a, b) => {
+      const aInStock = (a.stockLevel || 0) > 0;
+      const bInStock = (b.stockLevel || 0) > 0;
+      const aSales = a.avgDailySales || 0;
+      const bSales = b.avgDailySales || 0;
+
+      // Out-of-stock items go to the bottom
+      if (aInStock && !bInStock) return -1;
+      if (!aInStock && bInStock) return 1;
+
+      // For in-stock items, prioritize by sales velocity (highest first)
+      if (aInStock && bInStock) {
+        if (aSales !== bSales) return bSales - aSales;
+      }
+
+      // Then by absolute weekly profit impact
+      const aImpact = Math.abs(a.estimatedWeeklyProfitImpact || 0);
+      const bImpact = Math.abs(b.estimatedWeeklyProfitImpact || 0);
+      if (aImpact !== bImpact) return bImpact - aImpact;
+
+      // Finally by stock level
+      return (b.stockLevel || 0) - (a.stockLevel || 0);
+    });
 
     // Paginate
     const totalCount = items.length;
@@ -540,6 +582,190 @@ export class DynamoDBService {
   }
 
   /**
+   * Get orders for a date range efficiently using the by-date GSI
+   * Queries all days in parallel for maximum performance
+   */
+  async getOrdersByDateRange(fromDate: string, toDate: string): Promise<Order[]> {
+    // Generate list of dates in range
+    const dates: string[] = [];
+    const current = new Date(fromDate);
+    const end = new Date(toDate);
+
+    while (current <= end) {
+      dates.push(current.toISOString().substring(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Query ALL days in parallel - DynamoDB handles this well
+    const orderPromises = dates.map((dateDay) => this.getOrdersByDate(dateDay));
+    const results = await Promise.all(orderPromises);
+
+    const allOrders: Order[] = [];
+    for (const orders of results) {
+      allOrders.push(...orders);
+    }
+
+    return allOrders;
+  }
+
+  // ============ Order Lines (Denormalized) ============
+
+  /**
+   * Batch write order line records
+   */
+  async batchPutOrderLines(lines: OrderLineRecord[]): Promise<void> {
+    const chunks = this.chunkArray(lines, 25);
+
+    for (const chunk of chunks) {
+      await this.docClient.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [this.orderLinesTable]: chunk.map((line) => ({
+              PutRequest: { Item: line },
+            })),
+          },
+        })
+      );
+    }
+  }
+
+  /**
+   * Get order lines for a SKU within a date range
+   * This is the primary query for product detail page channel sales
+   * Note: Sort key is "orderDate#orderId", so we use string prefix matching
+   */
+  async getOrderLinesBySku(
+    sku: string,
+    fromDate?: string,
+    toDate?: string
+  ): Promise<OrderLineRecord[]> {
+    let keyCondition = 'sku = :sku';
+    const expressionValues: Record<string, unknown> = { ':sku': sku };
+
+    if (fromDate && toDate) {
+      // Sort key is "ISO-timestamp#orderId", so we need to adjust boundaries
+      // fromDate stays as-is (will match >= that date prefix)
+      // toDate needs to go to end of day, use next day to include all of toDate
+      const nextDay = new Date(toDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const toDateEnd = nextDay.toISOString().substring(0, 10);
+
+      keyCondition += ' AND orderDate BETWEEN :fromDate AND :toDate';
+      expressionValues[':fromDate'] = fromDate;
+      expressionValues[':toDate'] = toDateEnd;
+    } else if (fromDate) {
+      keyCondition += ' AND orderDate >= :fromDate';
+      expressionValues[':fromDate'] = fromDate;
+    } else if (toDate) {
+      const nextDay = new Date(toDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const toDateEnd = nextDay.toISOString().substring(0, 10);
+
+      keyCondition += ' AND orderDate < :toDate';
+      expressionValues[':toDate'] = toDateEnd;
+    }
+
+    const result = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.orderLinesTable,
+        KeyConditionExpression: keyCondition,
+        ExpressionAttributeValues: expressionValues,
+        ScanIndexForward: true, // Oldest first
+      })
+    );
+
+    return (result.Items as OrderLineRecord[]) || [];
+  }
+
+  /**
+   * Get order lines for a specific day (using GSI)
+   * Useful for daily aggregations
+   */
+  async getOrderLinesByDate(dateDay: string): Promise<OrderLineRecord[]> {
+    const result = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.orderLinesTable,
+        IndexName: 'by-date',
+        KeyConditionExpression: 'orderDateDay = :dateDay',
+        ExpressionAttributeValues: { ':dateDay': dateDay },
+      })
+    );
+    return (result.Items as OrderLineRecord[]) || [];
+  }
+
+  /**
+   * Get order lines for a date range (single scan with filter)
+   * Used for overall sales aggregation across all SKUs
+   */
+  async getOrderLinesByDateRange(
+    fromDate: string,
+    toDate: string
+  ): Promise<OrderLineRecord[]> {
+    const allLines: OrderLineRecord[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new ScanCommand({
+          TableName: this.orderLinesTable,
+          FilterExpression: 'orderDateDay >= :fromDate AND orderDateDay <= :toDate',
+          ExpressionAttributeValues: {
+            ':fromDate': fromDate,
+            ':toDate': toDate,
+          },
+          ProjectionExpression: 'sku, orderDateDay, channelName, orderId, quantity, lineTotalInclVat',
+          ExclusiveStartKey: lastKey,
+        })
+      );
+
+      if (result.Items) {
+        allLines.push(...(result.Items as OrderLineRecord[]));
+      }
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return allLines;
+  }
+
+  /**
+   * Get the earliest order in the database by order date
+   * Used for backfill continuation - fetches a sample and finds the minimum date
+   */
+  async getEarliestOrder(): Promise<Order | null> {
+    // Scan with a limit to get a sample, then find the earliest
+    // We scan in batches to avoid reading the entire table
+    let earliestOrder: Order | null = null;
+    let lastKey: Record<string, unknown> | undefined;
+    let scannedCount = 0;
+    const maxScan = 10000; // Limit how much we scan
+
+    do {
+      const result = await this.docClient.send(
+        new ScanCommand({
+          TableName: this.ordersTable,
+          ProjectionExpression: 'orderId, orderDate',
+          ExclusiveStartKey: lastKey,
+          Limit: 1000,
+        })
+      );
+
+      if (result.Items) {
+        for (const item of result.Items) {
+          const order = item as Order;
+          if (!earliestOrder || order.orderDate < earliestOrder.orderDate) {
+            earliestOrder = order;
+          }
+        }
+        scannedCount += result.Items.length;
+      }
+
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey && scannedCount < maxScan);
+
+    return earliestOrder;
+  }
+
+  /**
    * Create a lookup map for products by SKU (case-insensitive) and Balterley SKU
    * Returns a Map where keys are uppercase SKUs and values are products
    */
@@ -567,36 +793,37 @@ export class DynamoDBService {
   async getSalesBySku(days: number = 7): Promise<Map<string, { quantity: number; revenue: number }>> {
     const salesMap = new Map<string, { quantity: number; revenue: number }>();
 
-    // Get orders for each day in the range
+    // Calculate date range
     const today = new Date();
-    const dateDays: string[] = [];
-    for (let i = 0; i < days; i++) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      dateDays.push(d.toISOString().substring(0, 10));
-    }
+    const fromDate = new Date(today);
+    fromDate.setDate(fromDate.getDate() - days);
+    const fromDateStr = fromDate.toISOString().substring(0, 10);
 
-    // Query orders in parallel batches (50 concurrent queries at a time)
-    const batchSize = 50;
-    const batches = this.chunkArray(dateDays, batchSize);
+    // Scan the denormalized order-lines table - much smaller and faster
+    let lastKey: Record<string, unknown> | undefined;
 
-    for (const batch of batches) {
-      const orderPromises = batch.map((dateDay) => this.getOrdersByDate(dateDay));
-      const orderResults = await Promise.all(orderPromises);
+    do {
+      const result = await this.docClient.send(
+        new ScanCommand({
+          TableName: this.orderLinesTable,
+          FilterExpression: 'orderDateDay >= :fromDate',
+          ExpressionAttributeValues: { ':fromDate': fromDateStr },
+          ProjectionExpression: 'sku, quantity, lineTotalInclVat',
+          ExclusiveStartKey: lastKey,
+        })
+      );
 
-      for (const orders of orderResults) {
-        for (const order of orders) {
-          if (order.lines) {
-            for (const line of order.lines) {
-              const existing = salesMap.get(line.sku) || { quantity: 0, revenue: 0 };
-              existing.quantity += line.quantity;
-              existing.revenue += line.lineTotalInclVat;
-              salesMap.set(line.sku, existing);
-            }
-          }
+      if (result.Items) {
+        for (const item of result.Items) {
+          const line = item as OrderLineRecord;
+          const existing = salesMap.get(line.sku) || { quantity: 0, revenue: 0 };
+          existing.quantity += line.quantity;
+          existing.revenue += line.lineTotalInclVat;
+          salesMap.set(line.sku, existing);
         }
       }
-    }
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
 
     return salesMap;
   }
@@ -678,6 +905,7 @@ export function createDynamoDBService(): DynamoDBService {
     proposalsTable: process.env.PRICE_PROPOSALS_TABLE || 'repricing-proposals',
     channelsTable: process.env.CHANNEL_CONFIG_TABLE || 'repricing-channels',
     ordersTable: process.env.ORDERS_TABLE || 'repricing-orders',
+    orderLinesTable: process.env.ORDER_LINES_TABLE || 'repricing-order-lines',
     carrierCostsTable: process.env.CARRIER_COSTS_TABLE || 'repricing-carrier-costs',
   });
 }

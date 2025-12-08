@@ -34,6 +34,17 @@ interface CEProduct {
   Ean?: string;
   ImageUrl?: string;
   ExtraImageUrls?: string[];
+  // Physical dimensions
+  Weight?: number;
+  Height?: number;
+  Width?: number;
+  Length?: number;
+  // Custom fields / Extra data
+  ExtraData?: Array<{
+    Key: string;
+    Value: string;
+    Type?: string;
+  }>;
 }
 
 /**
@@ -126,6 +137,17 @@ export class ChannelEngineService {
           const batchProducts: ChannelEngineProduct[] = [];
 
           for (const product of response.Content) {
+            // Try to get weight from ExtraData if not in standard field
+            let weight = product.Weight;
+            if (!weight && product.ExtraData) {
+              const weightField = product.ExtraData.find(
+                (e) => e.Key.toLowerCase() === 'weight' || e.Key.toLowerCase() === 'weight_kg'
+              );
+              if (weightField && weightField.Value) {
+                weight = parseFloat(weightField.Value);
+              }
+            }
+
             batchProducts.push({
               merchantProductNo: product.MerchantProductNo,
               name: product.Name,
@@ -136,6 +158,7 @@ export class ChannelEngineService {
               price: product.Price,
               categoryTrail: product.CategoryTrail,
               imageUrl: product.ImageUrl || (product.ExtraImageUrls && product.ExtraImageUrls[0]),
+              weight: weight,
             });
           }
 
@@ -238,10 +261,12 @@ export class ChannelEngineService {
    * Fetch all orders from a given date with incremental batch processing
    * @param fromDate Start date to fetch orders from
    * @param onBatch Callback called after each page for incremental saving
+   * @param toDate Optional end date to fetch orders until
    */
   async fetchOrders(
     fromDate: Date,
-    onBatch?: (orders: ChannelEngineOrder[], page: number, total: number) => Promise<void>
+    onBatch?: (orders: ChannelEngineOrder[], page: number, total: number) => Promise<void>,
+    toDate?: Date
   ): Promise<ChannelEngineOrder[]> {
     const allOrders: ChannelEngineOrder[] = [];
     let page = 1;
@@ -250,17 +275,23 @@ export class ChannelEngineService {
     let totalCount = 0;
 
     const fromStr = fromDate.toISOString();
-    console.log(`[CE] Starting order fetch from ${fromStr}`);
+    const toStr = toDate?.toISOString();
+    console.log(`[CE] Starting order fetch from ${fromStr}${toStr ? ` to ${toStr}` : ''}`);
 
     while (hasMore) {
       console.log(`[CE] Fetching orders page ${page}...`);
 
       try {
+        const queryParams: Record<string, string | number> = { fromDate: fromStr, page, pageSize };
+        if (toStr) {
+          queryParams.toDate = toStr;
+        }
+
         const response = await this.request<ChannelEngineOrder[]>(
           '/orders',
           'GET',
           undefined,
-          { fromDate: fromStr, page, pageSize }
+          queryParams
         );
 
         totalCount = response.TotalCount || totalCount;

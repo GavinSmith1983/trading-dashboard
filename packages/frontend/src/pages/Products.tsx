@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { productsApi, analyticsApi } from '../api';
 import type { Product } from '../types';
 import { Card, CardContent } from '../components/Card';
@@ -12,6 +12,8 @@ import ErrorMessage from '../components/ErrorMessage';
 
 type SortField = 'sku' | 'brand' | 'price' | 'cost' | 'delivery' | 'twentyPercent' | 'ppo' | 'margin' | 'stock' | 'avgSales' | 'avgRevenue';
 type SortDirection = 'asc' | 'desc';
+type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
+type MarginFilter = 'all' | 'negative' | 'low' | 'good';
 
 // Helper function to calculate derived values for a product
 const getProductMetrics = (product: Product) => {
@@ -43,16 +45,24 @@ export default function Products() {
   const [editDelivery, setEditDelivery] = useState('');
   const [sortField, setSortField] = useState<SortField>('avgSales');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
+  const [missingCostFilter, setMissingCostFilter] = useState(false);
+  const [marginFilter, setMarginFilter] = useState<MarginFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading: productsLoading, error, refetch } = useQuery({
     queryKey: ['products'],
     queryFn: productsApi.list,
   });
 
-  const { data: salesData } = useQuery({
+  const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ['sales', 180],
     queryFn: () => analyticsApi.sales(180),
   });
+
+  // Wait for both products and sales data before showing content
+  const isLoading = productsLoading || salesLoading;
 
   // Calculate average daily sales from 6-month data
   const salesDays = salesData?.days || 180;
@@ -72,13 +82,33 @@ export default function Products() {
   // Filter and sort products - must be before early returns to maintain hook order
   const filteredProducts = useMemo(() => {
     const filtered = products.filter((product) => {
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return (
-        product.sku.toLowerCase().includes(term) ||
-        product.title.toLowerCase().includes(term) ||
-        product.brand.toLowerCase().includes(term)
-      );
+      // Search filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const matchesSearch = (
+          product.sku.toLowerCase().includes(term) ||
+          product.title.toLowerCase().includes(term) ||
+          product.brand.toLowerCase().includes(term)
+        );
+        if (!matchesSearch) return false;
+      }
+
+      // Stock filter
+      if (stockFilter === 'in-stock' && (product.stockLevel || 0) <= 0) return false;
+      if (stockFilter === 'out-of-stock' && (product.stockLevel || 0) > 0) return false;
+
+      // Missing cost filter
+      if (missingCostFilter && (product.costPrice || 0) > 0) return false;
+
+      // Margin filter
+      if (marginFilter !== 'all') {
+        const { margin } = getProductMetrics(product);
+        if (marginFilter === 'negative' && margin >= 0) return false;
+        if (marginFilter === 'low' && (margin < 0 || margin >= 20)) return false;
+        if (marginFilter === 'good' && margin < 20) return false;
+      }
+
+      return true;
     });
 
     return filtered.sort((a, b) => {
@@ -144,7 +174,16 @@ export default function Products() {
         ? (valueA as number) - (valueB as number)
         : (valueB as number) - (valueA as number);
     });
-  }, [products, searchTerm, sortField, sortDirection, sales]);
+  }, [products, searchTerm, sortField, sortDirection, sales, stockFilter, missingCostFilter, marginFilter]);
+
+  // Calculate pagination values
+  const totalPages = Math.ceil(filteredProducts.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  const resetPage = () => setCurrentPage(1);
 
   const handleSave = () => {
     if (editingProduct) {
@@ -266,26 +305,123 @@ export default function Products() {
         </Card>
       </div>
 
-      {/* Search */}
+      {/* Search and Filters */}
       <Card className="mb-6">
         <CardContent className="py-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by SKU, title, or brand..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Search - narrower */}
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search SKU, title, brand..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+
+            <div className="h-8 w-px bg-gray-200" />
+
+            {/* Stock Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Stock:</span>
+              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                <button
+                  onClick={() => { setStockFilter('all'); resetPage(); }}
+                  className={`px-3 py-1.5 text-sm transition-colors ${
+                    stockFilter === 'all'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => { setStockFilter('in-stock'); resetPage(); }}
+                  className={`px-3 py-1.5 text-sm border-l border-gray-300 transition-colors ${
+                    stockFilter === 'in-stock'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  In Stock
+                </button>
+                <button
+                  onClick={() => { setStockFilter('out-of-stock'); resetPage(); }}
+                  className={`px-3 py-1.5 text-sm border-l border-gray-300 transition-colors ${
+                    stockFilter === 'out-of-stock'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Out of Stock
+                </button>
+              </div>
+            </div>
+
+            {/* Missing Cost Filter */}
+            <button
+              onClick={() => { setMissingCostFilter(!missingCostFilter); resetPage(); }}
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                missingCostFilter
+                  ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
+                  : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <Filter className="h-4 w-4" />
+              Missing Cost
+            </button>
+
+            {/* Margin Filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Margin:</span>
+              <select
+                value={marginFilter}
+                onChange={(e) => { setMarginFilter(e.target.value as MarginFilter); resetPage(); }}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All</option>
+                <option value="negative">Negative (&lt;0%)</option>
+                <option value="low">Low (0-20%)</option>
+                <option value="good">Good (&gt;20%)</option>
+              </select>
+            </div>
+
+            {/* Active filters count */}
+            {(stockFilter !== 'all' || missingCostFilter || marginFilter !== 'all') && (
+              <button
+                onClick={() => {
+                  setStockFilter('all');
+                  setMissingCostFilter(false);
+                  setMarginFilter('all');
+                  resetPage();
+                }}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Clear filters
+              </button>
+            )}
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Listing count */}
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">{filteredProducts.length.toLocaleString()}</span>
+              {filteredProducts.length !== products.length && (
+                <span> of {products.length.toLocaleString()}</span>
+              )}
+              {' '}products
+            </div>
           </div>
         </CardContent>
       </Card>
       </div>
 
       {/* Products Table */}
-      <div className="flex-1 overflow-hidden px-8 pb-8">
-      <Card className="h-full flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden px-8 pb-8">
+      <Card className="flex-1 flex flex-col overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -388,7 +524,7 @@ export default function Products() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProducts.slice(0, 100).map((product) => (
+              paginatedProducts.map((product) => (
                 <TableRow key={product.sku}>
                   <TableCell>
                     <button
@@ -547,9 +683,64 @@ export default function Products() {
           </TableBody>
         </Table>
       </Card>
-      {filteredProducts.length > 100 && (
-        <div className="mt-4 text-sm text-gray-500 text-center">
-          Showing first 100 of {filteredProducts.length} products
+
+      {/* Pagination Controls */}
+      {filteredProducts.length > 0 && (
+        <div className="flex-shrink-0 mt-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>Show</span>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+              className="px-2 py-1 border border-gray-300 rounded bg-white text-sm"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+            <span>per page</span>
+          </div>
+
+          <div className="text-sm text-gray-600">
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length.toLocaleString()}
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            <span className="px-3 py-1 text-sm">
+              Page {currentPage} of {totalPages}
+            </span>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Last
+            </button>
+          </div>
         </div>
       )}
       </div>

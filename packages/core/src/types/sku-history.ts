@@ -1,4 +1,13 @@
 /**
+ * Competitor price snapshot for history
+ */
+export interface CompetitorPriceSnapshot {
+  competitorName: string;
+  price: number;
+  url?: string;
+}
+
+/**
  * Daily snapshot of SKU metrics for historical tracking
  */
 export interface SkuHistoryRecord {
@@ -8,6 +17,7 @@ export interface SkuHistoryRecord {
   // Price data
   price: number;
   costPrice?: number;
+  deliveryCost?: number;
 
   // Stock data
   stockLevel: number;
@@ -18,6 +28,10 @@ export interface SkuHistoryRecord {
 
   // Calculated metrics
   margin?: number;
+
+  // Competitor data
+  lowestCompetitorPrice?: number;
+  competitorPrices?: CompetitorPriceSnapshot[];
 
   // Metadata
   recordedAt: string; // ISO timestamp

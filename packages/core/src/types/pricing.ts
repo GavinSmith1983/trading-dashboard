@@ -40,13 +40,25 @@ export interface PricingRuleConditions {
   stockBelow?: number; // Apply if stock is below this level
   stockAbove?: number; // Apply if stock is above this level
 
-  // Sales velocity conditions
+  // Sales velocity conditions (7-day total)
   salesVelocityBelow?: number; // Apply if 7-day sales below this
   salesVelocityAbove?: number; // Apply if 7-day sales above this
+
+  // Daily sales velocity conditions (avg per day)
+  dailySalesBelow?: number; // Apply if avg daily sales below this
+  dailySalesAbove?: number; // Apply if avg daily sales above this
+
+  // Days of stock conditions (stock / daily sales)
+  daysOfStockBelow?: number; // Apply if days of stock below this (danger stock)
+  daysOfStockAbove?: number; // Apply if days of stock above this (overstock)
 
   // Price conditions
   priceBelow?: number; // Apply if current price below this
   priceAbove?: number; // Apply if current price above this
+
+  // Revenue conditions (daily)
+  dailyRevenueBelow?: number; // Apply if avg daily revenue below this
+  dailyRevenueAbove?: number; // Apply if avg daily revenue above this
 }
 
 /**
@@ -131,11 +143,18 @@ export interface PriceCalculationResult {
   currentProfit: number;
   proposedProfit: number;
 
+  // Impact forecasting (based on recent sales velocity)
+  estimatedDailyProfitChange: number; // Change in daily profit
+  estimatedWeeklyRevenueImpact: number; // Estimated weekly revenue change
+  estimatedWeeklyProfitImpact: number; // Estimated weekly profit change
+  salesVelocity: number; // Units per day (from 7-day avg)
+
   // Cost breakdown
   costBreakdown: CostBreakdown;
 
   // Which rule triggered this change
   appliedRule?: string;
+  appliedRuleId?: string;
   reason: string;
 
   // Warnings/flags
@@ -165,56 +184,55 @@ export interface CostBreakdown {
 
 /**
  * Calculate costs and margin for a given price
+ *
+ * Simple formula:
+ * 1. Price Ex-VAT = Selling Price / 1.2
+ * 2. Clawback = Price Ex-VAT × 20% (covers commission, fees, ads)
+ * 3. PPO = Price Ex-VAT - Clawback - Delivery - Cost
+ * 4. Margin = PPO / Price Ex-VAT × 100
  */
 export function calculateCostBreakdown(
   sellingPrice: number,
   costPrice: number,
   deliveryCost: number,
-  commissionPercent: number,
-  fixedFee: number,
-  paymentProcessingPercent: number,
-  advertisingPercent: number,
-  vatPercent: number,
-  pricesIncludeVat: boolean
+  _commissionPercent: number, // Unused - using flat 20% clawback
+  _fixedFee: number,          // Unused - using flat 20% clawback
+  _paymentProcessingPercent: number, // Unused - using flat 20% clawback
+  _advertisingPercent: number, // Unused - using flat 20% clawback
+  _vatPercent: number,        // Always 20%
+  _pricesIncludeVat: boolean  // Always true
 ): CostBreakdown {
-  // Calculate VAT
-  const vatMultiplier = 1 + vatPercent / 100;
-  const priceExVat = pricesIncludeVat ? sellingPrice / vatMultiplier : sellingPrice;
-  const vatAmount = pricesIncludeVat ? sellingPrice - priceExVat : 0;
+  // Helper to sanitize numeric values (prevent Infinity/NaN going to DynamoDB)
+  const sanitize = (val: number): number => {
+    if (!Number.isFinite(val)) return 0;
+    return val;
+  };
 
-  // Calculate fees (based on selling price inc VAT)
-  const channelCommission = sellingPrice * (commissionPercent / 100);
-  const paymentProcessing = sellingPrice * (paymentProcessingPercent / 100);
-  const advertisingCost = sellingPrice * (advertisingPercent / 100);
+  // Step 1: Remove VAT (always 20%)
+  const priceExVat = sellingPrice / 1.2;
+  const vatAmount = sellingPrice - priceExVat;
 
-  // Total costs
-  const totalCosts =
-    costPrice + deliveryCost + channelCommission + fixedFee + paymentProcessing + advertisingCost;
+  // Step 2: Calculate 20% clawback (covers all channel fees, commission, ads)
+  const clawback = priceExVat * 0.20;
 
-  // Net profit
-  const netProfit = priceExVat - totalCosts + vatAmount; // VAT is pass-through
+  // Step 3: Calculate PPO (Profit Per Order)
+  const ppo = priceExVat - clawback - deliveryCost - costPrice;
 
-  // Actually, let's recalculate - profit is revenue minus all costs
-  // Revenue = selling price (we receive this)
-  // Costs = COGS + delivery + commission + fees + ads
-  // VAT is collected and remitted, so neutral for profit calc
-  const actualProfit = sellingPrice - totalCosts;
-
-  // Margin as percentage of selling price
-  const marginPercent = (actualProfit / sellingPrice) * 100;
+  // Step 4: Calculate margin as percentage of Ex-VAT price
+  const marginPercent = priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
 
   return {
-    sellingPrice,
-    vatAmount,
-    priceExVat,
-    costPrice,
-    deliveryCost,
-    channelCommission,
-    channelFixedFee: fixedFee,
-    paymentProcessing,
-    advertisingCost,
-    totalCosts,
-    netProfit: actualProfit,
-    marginPercent,
+    sellingPrice: sanitize(sellingPrice),
+    vatAmount: sanitize(vatAmount),
+    priceExVat: sanitize(priceExVat),
+    costPrice: sanitize(costPrice),
+    deliveryCost: sanitize(deliveryCost),
+    channelCommission: sanitize(clawback), // Clawback shown as commission
+    channelFixedFee: 0,
+    paymentProcessing: 0,
+    advertisingCost: 0,
+    totalCosts: sanitize(costPrice + deliveryCost + clawback),
+    netProfit: sanitize(ppo),
+    marginPercent: sanitize(marginPercent),
   };
 }

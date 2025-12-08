@@ -137,3 +137,34 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# CDK outputs
+infrastructure/cdk.out/
+
+# Compiled TypeScript in core package
+packages/core/src/**/*.js
+packages/core/src/**/*.js.map
+packages/core/src/**/*.d.ts
+
+# Lambda build outputs
+packages/lambdas/**/dist/
+
+# Temporary/debug files
+*.json.bak
+response.json
+output.json
+orders.json
+backfill-result.json
+data-sync-result.json
+
+# Build artifacts
+deploy-api-temp/
+deploy-bundle/
+backups/
+
+# Screenshots
+*.png
+!packages/frontend/public/**/*.png
+
+# Old implementations
+*.py

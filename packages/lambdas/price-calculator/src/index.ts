@@ -19,14 +19,27 @@ export async function handler(event: ScheduledEvent, context: Context): Promise<
   const batchId = uuid();
 
   try {
-    // 1. Load all products
-    console.log('Loading products...');
-    const products = await db.getAllProducts();
-    console.log(`Loaded ${products.length} products`);
+    // 1. Load all products and sales data in parallel
+    console.log('Loading products and sales data...');
+    const [products, salesMap] = await Promise.all([
+      db.getAllProducts(),
+      db.getSalesBySku(7), // Get 7-day sales data
+    ]);
+    console.log(`Loaded ${products.length} products and sales data for ${salesMap.size} SKUs`);
 
-    // Filter to products with cost data (required for margin calculation)
+    // Merge sales data into products
+    for (const product of products) {
+      const sales = salesMap.get(product.sku);
+      if (sales) {
+        product.salesLast7Days = sales.quantity;
+      }
+    }
+
+    // Filter to products with cost data (required for any pricing calculation)
+    // Products without cost price cannot be repriced - we need costs to calculate margin
     const productsWithCosts = products.filter((p) => p.costPrice > 0);
-    console.log(`${productsWithCosts.length} products have cost data`);
+    const withoutRetail = productsWithCosts.filter((p) => p.currentPrice < 1).length;
+    console.log(`${productsWithCosts.length} products have cost data (${withoutRetail} need retail price set)`);
 
     if (productsWithCosts.length === 0) {
       console.warn('No products with cost data - skipping price calculation');

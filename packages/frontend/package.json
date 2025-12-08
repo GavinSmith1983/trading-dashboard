@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.17.0",
+    "amazon-cognito-identity-js": "^6.3.16",
     "clsx": "^2.1.0",
     "lucide-react": "^0.303.0",
     "react": "^18.2.0",

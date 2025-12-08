@@ -15,6 +15,7 @@ interface LambdaStackProps extends cdk.StackProps {
   priceProposalsTable: dynamodb.Table;
   channelConfigTable: dynamodb.Table;
   ordersTable: dynamodb.Table;
+  orderLinesTable: dynamodb.Table;
 }
 
 export class LambdaStack extends cdk.Stack {
@@ -22,6 +23,7 @@ export class LambdaStack extends cdk.Stack {
   public readonly dataSyncHandler: lambda.Function;
   public readonly priceCalculatorHandler: lambda.Function;
   public readonly orderSyncHandler: lambda.Function;
+  public readonly competitorScrapeHandler: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaStackProps) {
     super(scope, id, props);
@@ -58,6 +60,7 @@ export class LambdaStack extends cdk.Stack {
       PRICE_PROPOSALS_TABLE: props.priceProposalsTable.tableName,
       CHANNEL_CONFIG_TABLE: props.channelConfigTable.tableName,
       ORDERS_TABLE: props.ordersTable.tableName,
+      ORDER_LINES_TABLE: props.orderLinesTable.tableName,
       CHANNEL_ENGINE_SECRET_ARN: channelEngineSecret.secretArn,
       GOOGLE_SHEETS_SECRET_ARN: googleSheetsSecret.secretArn,
     };
@@ -129,8 +132,21 @@ export class LambdaStack extends cdk.Stack {
       projectRoot: path.join(__dirname, '../..'),
     });
 
+    // Competitor Scrape Lambda - Scrapes competitor prices weekly
+    this.competitorScrapeHandler = new nodejs.NodejsFunction(this, 'CompetitorScrapeHandler', {
+      functionName: 'repricing-competitor-scrape',
+      entry: path.join(__dirname, '../../packages/lambdas/competitor-scrape/src/index.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 512,
+      environment: commonEnv,
+      bundling: bundlingOptions,
+      projectRoot: path.join(__dirname, '../..'),
+    });
+
     // Grant DynamoDB permissions to all Lambdas
-    const allLambdas = [this.dataSyncHandler, this.priceCalculatorHandler, this.apiHandler, this.orderSyncHandler];
+    const allLambdas = [this.dataSyncHandler, this.priceCalculatorHandler, this.apiHandler, this.orderSyncHandler, this.competitorScrapeHandler];
 
     for (const fn of allLambdas) {
       props.productsTable.grantReadWriteData(fn);
@@ -138,43 +154,54 @@ export class LambdaStack extends cdk.Stack {
       props.priceProposalsTable.grantReadWriteData(fn);
       props.channelConfigTable.grantReadWriteData(fn);
       props.ordersTable.grantReadWriteData(fn);
+      props.orderLinesTable.grantReadWriteData(fn);
       channelEngineSecret.grantRead(fn);
       googleSheetsSecret.grantRead(fn);
     }
 
-    // EventBridge rule - Daily data sync (7pm UTC - products, stock, pricing from Sheets)
+    // EventBridge rule - Daily data sync (5am UTC - products, stock, pricing from Sheets)
     const dataSyncRule = new events.Rule(this, 'DataSyncSchedule', {
       ruleName: 'repricing-data-sync-daily',
       schedule: events.Schedule.cron({
         minute: '0',
-        hour: '19',
+        hour: '5',
       }),
       description: 'Daily data sync from ChannelEngine (products, stock, pricing) and Google Sheets',
     });
     dataSyncRule.addTarget(new targets.LambdaFunction(this.dataSyncHandler));
 
-    // EventBridge rule - Daily order sync (8pm UTC - new orders)
+    // EventBridge rule - Hourly order sync (every hour on the hour)
     const orderSyncRule = new events.Rule(this, 'OrderSyncSchedule', {
-      ruleName: 'repricing-order-sync-daily',
+      ruleName: 'repricing-order-sync-hourly',
       schedule: events.Schedule.cron({
         minute: '0',
-        hour: '20',
       }),
-      description: 'Daily order sync from ChannelEngine',
+      description: 'Hourly order sync from ChannelEngine',
     });
     orderSyncRule.addTarget(new targets.LambdaFunction(this.orderSyncHandler));
 
-    // EventBridge rule - Weekly price calculation (Monday 6am)
+    // EventBridge rule - Weekly price calculation (Monday 7am UTC, after data sync completes)
     const priceCalcRule = new events.Rule(this, 'PriceCalculatorSchedule', {
       ruleName: 'repricing-price-calc-weekly',
       schedule: events.Schedule.cron({
         minute: '0',
-        hour: '6',
+        hour: '7',
         weekDay: 'MON',
       }),
       description: 'Weekly price calculation and proposal generation',
     });
     priceCalcRule.addTarget(new targets.LambdaFunction(this.priceCalculatorHandler));
+
+    // EventBridge rule - Daily competitor scrape (4am UTC, before data sync)
+    const competitorScrapeRule = new events.Rule(this, 'CompetitorScrapeSchedule', {
+      ruleName: 'repricing-competitor-scrape-daily',
+      schedule: events.Schedule.cron({
+        minute: '0',
+        hour: '4',
+      }),
+      description: 'Daily competitor price scraping',
+    });
+    competitorScrapeRule.addTarget(new targets.LambdaFunction(this.competitorScrapeHandler));
 
     // Outputs
     new cdk.CfnOutput(this, 'DataSyncFunctionArn', {
@@ -191,6 +218,10 @@ export class LambdaStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'OrderSyncFunctionArn', {
       value: this.orderSyncHandler.functionArn,
+    });
+
+    new cdk.CfnOutput(this, 'CompetitorScrapeFunctionArn', {
+      value: this.competitorScrapeHandler.functionArn,
     });
   }
 }

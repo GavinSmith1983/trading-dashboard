@@ -8,9 +8,13 @@ import {
   ProposalStatus,
   BulkApprovalRequest,
   CarrierCost,
+  OrderLineRecord,
   normalizeCarrierName,
   getCarrierDisplayName,
   isExcludedCarrier,
+  scrapeProductCompetitors,
+  getCompetitorNameFromUrl,
+  CompetitorUrl,
 } from '@repricing/core';
 import { v4 as uuid } from 'uuid';
 
@@ -34,6 +38,11 @@ export async function handler(
     const path = event.path;
     const method = event.httpMethod;
 
+    // Handle CORS preflight requests
+    if (method === 'OPTIONS') {
+      return response(200, null);
+    }
+
     // Route requests
     if (path.startsWith('/products')) {
       return handleProducts(event);
@@ -54,17 +63,33 @@ export async function handler(
       return handleImport(event);
     }
     if (path.startsWith('/carriers')) {
+      // Check for recalculate endpoint first
+      if (path === '/carriers/recalculate' && method === 'POST') {
+        return handleRecalculateDeliveryCosts();
+      }
       return handleCarriers(event);
+    }
+    if (path === '/products/fill-delivery-costs' && method === 'POST') {
+      return handleFillDeliveryCostsByCategory();
     }
     if (path.startsWith('/history')) {
       // Backfill endpoint must be checked before general history
       if (path === '/history/backfill' && method === 'POST') {
-        return handleHistoryBackfill();
+        return handleHistoryBackfill(event);
       }
       return handleHistory(event);
     }
     if (path === '/sync' && method === 'POST') {
       return handleManualSync(event);
+    }
+    if (path.startsWith('/competitors')) {
+      return handleCompetitors(event);
+    }
+    if (path === '/order-lines/backfill' && method === 'POST') {
+      return handleOrderLinesBackfill(event);
+    }
+    if (path.startsWith('/prices')) {
+      return handlePrices(event);
     }
 
     return response(404, { error: 'Not found' });
@@ -98,7 +123,7 @@ async function handleProducts(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   if (method === 'PUT' && sku) {
-    // Update product (costs, delivery)
+    // Update product (costs, delivery, mrp, competitor URLs)
     const body = JSON.parse(event.body || '{}');
     const existing = await db.getProduct(sku);
 
@@ -110,7 +135,9 @@ async function handleProducts(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       ...existing,
       costPrice: body.costPrice ?? existing.costPrice,
       deliveryCost: body.deliveryCost ?? existing.deliveryCost,
+      mrp: body.mrp ?? existing.mrp,
       category: body.category ?? existing.category,
+      competitorUrls: body.competitorUrls ?? existing.competitorUrls,
     };
 
     await db.putProduct(updated);
@@ -118,6 +145,197 @@ async function handleProducts(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   return response(405, { error: 'Method not allowed' });
+}
+
+// ============ Fill Delivery Costs by Category ============
+
+/**
+ * Calculates delivery costs for products without them, using category averages
+ * derived ONLY from real order data (orders with deliveryCarrier populated).
+ */
+async function handleFillDeliveryCostsByCategory(): Promise<APIGatewayProxyResult> {
+  console.log('[FillDeliveryCosts] Starting category-based delivery cost fill from real order data');
+
+  // Get all data in parallel
+  const [products, allOrders, carrierCosts] = await Promise.all([
+    db.getAllProducts(),
+    db.getAllOrders(),
+    db.getAllCarrierCosts(),
+  ]);
+
+  // Build lookups
+  const productsBySku = new Map(products.map(p => [p.sku.toUpperCase(), p]));
+  const carrierCostMap = new Map(carrierCosts.map(c => [c.carrierId, c.costPerParcel]));
+
+  // Filter to orders with actual delivery data from Vector Summary
+  const ordersWithDelivery = allOrders.filter(
+    order => order.deliveryCarrier && order.deliveryCarrier !== 'unknown'
+  );
+  console.log(`[FillDeliveryCosts] Found ${ordersWithDelivery.length} orders with real delivery data`);
+
+  // Calculate delivery cost per SKU from real orders (same logic as recalculate)
+  const skuDeliveryStats = new Map<string, {
+    totalDeliveryCost: number;
+    totalQuantity: number;
+    orderCount: number;
+  }>();
+
+  for (const order of ordersWithDelivery) {
+    const carrier = order.deliveryCarrier!;
+    const carrierCost = carrierCostMap.get(carrier) || 0;
+
+    if (carrierCost === 0) continue; // Skip if carrier has no cost set
+
+    const lines = order.lines || [];
+    if (lines.length === 0) continue;
+
+    // Delivery cost is per order
+    const orderDeliveryCost = carrierCost;
+
+    // Calculate total order value for proportional split
+    const totalOrderValue = lines.reduce((sum, line) => {
+      const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
+      return sum + lineValue;
+    }, 0);
+
+    for (const line of lines) {
+      const sku = line.sku?.toUpperCase();
+      if (!sku) continue;
+
+      if (!skuDeliveryStats.has(sku)) {
+        skuDeliveryStats.set(sku, {
+          totalDeliveryCost: 0,
+          totalQuantity: 0,
+          orderCount: 0,
+        });
+      }
+
+      const stats = skuDeliveryStats.get(sku)!;
+
+      // Split delivery cost proportionally by line value
+      const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
+      const valueShare = totalOrderValue > 0 ? lineValue / totalOrderValue : 1 / lines.length;
+      const lineDeliveryCost = orderDeliveryCost * valueShare;
+
+      stats.totalDeliveryCost += lineDeliveryCost;
+      stats.totalQuantity += line.quantity || 1;
+      stats.orderCount += 1;
+    }
+  }
+
+  console.log(`[FillDeliveryCosts] Calculated delivery stats for ${skuDeliveryStats.size} SKUs from orders`);
+
+  // Now calculate category averages from SKUs with real order-derived delivery costs
+  const categoryStats = new Map<string, { total: number; count: number }>();
+
+  for (const [sku, stats] of skuDeliveryStats) {
+    if (stats.totalQuantity === 0) continue;
+
+    const product = productsBySku.get(sku);
+    if (!product || !product.category) continue;
+
+    const deliveryCostPerUnit = stats.totalDeliveryCost / stats.totalQuantity;
+    const primaryCategory = product.category.split(',')[0].trim();
+
+    const catStats = categoryStats.get(primaryCategory) || { total: 0, count: 0 };
+    catStats.total += deliveryCostPerUnit;
+    catStats.count += 1;
+    categoryStats.set(primaryCategory, catStats);
+  }
+
+  // Calculate category averages
+  const categoryAverages = new Map<string, number>();
+  for (const [category, stats] of categoryStats) {
+    categoryAverages.set(category, Math.round((stats.total / stats.count) * 100) / 100);
+  }
+
+  console.log(`[FillDeliveryCosts] Calculated averages for ${categoryAverages.size} categories from real order data`);
+
+  // Calculate overall average as fallback
+  let overallTotal = 0;
+  let overallCount = 0;
+  for (const stats of categoryStats.values()) {
+    overallTotal += stats.total;
+    overallCount += stats.count;
+  }
+  const overallAverage = overallCount > 0 ? Math.round((overallTotal / overallCount) * 100) / 100 : 0;
+  console.log(`[FillDeliveryCosts] Overall average delivery cost from orders: £${overallAverage}`);
+
+  // Find products without delivery costs and fill them using category averages
+  const productsToUpdate: Product[] = [];
+  const updateDetails: Array<{ sku: string; category: string; deliveryCost: number; source: string }> = [];
+
+  for (const product of products) {
+    // Skip products that already have order-derived delivery costs
+    if (skuDeliveryStats.has(product.sku.toUpperCase())) continue;
+
+    // Only fill products with no delivery cost
+    if (product.deliveryCost && product.deliveryCost > 0) continue;
+
+    let deliveryCost = 0;
+    let source = 'none';
+
+    if (product.category) {
+      const primaryCategory = product.category.split(',')[0].trim();
+      const categoryAvg = categoryAverages.get(primaryCategory);
+
+      if (categoryAvg && categoryAvg > 0) {
+        deliveryCost = categoryAvg;
+        source = `category avg: ${primaryCategory}`;
+      } else {
+        // Use overall average as fallback
+        deliveryCost = overallAverage;
+        source = 'overall avg (no category data)';
+      }
+    } else {
+      // No category - use overall average
+      deliveryCost = overallAverage;
+      source = 'overall avg (no category)';
+    }
+
+    if (deliveryCost > 0) {
+      productsToUpdate.push({
+        ...product,
+        deliveryCost,
+      });
+      updateDetails.push({
+        sku: product.sku,
+        category: product.category || 'none',
+        deliveryCost,
+        source,
+      });
+    }
+  }
+
+  console.log(`[FillDeliveryCosts] Updating ${productsToUpdate.length} products`);
+
+  // Batch update products
+  if (productsToUpdate.length > 0) {
+    await db.batchPutProducts(productsToUpdate);
+  }
+
+  // Build category summary for response
+  const categorySummary: Array<{ category: string; avgDeliveryCost: number; skusWithOrderData: number }> = [];
+  for (const [category, avg] of categoryAverages) {
+    const stats = categoryStats.get(category)!;
+    categorySummary.push({
+      category,
+      avgDeliveryCost: avg,
+      skusWithOrderData: stats.count,
+    });
+  }
+  categorySummary.sort((a, b) => b.skusWithOrderData - a.skusWithOrderData);
+
+  return response(200, {
+    message: 'Delivery cost fill complete (from real order data)',
+    ordersWithDeliveryData: ordersWithDelivery.length,
+    skusWithOrderDerivedCosts: skuDeliveryStats.size,
+    categoriesWithData: categoryAverages.size,
+    overallAverageDeliveryCost: overallAverage,
+    productsUpdated: productsToUpdate.length,
+    categorySummary: categorySummary.slice(0, 30),
+    sampleUpdates: updateDetails.slice(0, 50),
+  });
 }
 
 // ============ Proposals ============
@@ -167,6 +385,7 @@ async function handleProposals(event: APIGatewayProxyEvent): Promise<APIGatewayP
       brand: params.brand,
       searchTerm: params.search,
       hasWarnings: params.hasWarnings === 'true',
+      appliedRuleName: params.appliedRuleName,
     };
     const page = parseInt(params.page || '1', 10);
     const pageSize = parseInt(params.pageSize || '50', 10);
@@ -238,7 +457,7 @@ async function handlePushPrices(event: APIGatewayProxyEvent): Promise<APIGateway
 
   // Prepare price updates
   const updates = allApproved.map((p) => ({
-    merchantProductNo: p.sku,
+    sku: p.sku,
     price: p.approvedPrice ?? p.proposedPrice,
   }));
 
@@ -250,27 +469,42 @@ async function handlePushPrices(event: APIGatewayProxyEvent): Promise<APIGateway
     });
   }
 
-  // Push to ChannelEngine
-  const secretArn = process.env.CHANNEL_ENGINE_SECRET_ARN;
-  if (!secretArn) {
-    return response(500, { error: 'ChannelEngine not configured' });
+  // Push to Google Sheets (which syncs to ChannelEngine)
+  const gsSecretArn = process.env.GOOGLE_SHEETS_SECRET_ARN;
+  if (!gsSecretArn) {
+    return response(500, { error: 'Google Sheets not configured' });
   }
 
-  const ceService = await createChannelEngineService(secretArn);
-  const result = await ceService.updatePrices(updates);
+  try {
+    const { createGoogleSheetsService } = await import('@repricing/core');
+    const gsService = await createGoogleSheetsService(gsSecretArn, false); // false = write access
+    const result = await gsService.updatePrices(updates);
 
-  // Update proposal statuses to 'pushed'
-  if (result.success) {
-    for (const proposal of allApproved) {
-      await db.updateProposalStatus(proposal.proposalId, 'pushed', 'system', 'Pushed to ChannelEngine');
+    console.log(`Google Sheets updated: ${result.updated} SKUs, ${result.notFound.length} not found`);
+
+    // Update proposal statuses to 'pushed'
+    if (result.updated > 0) {
+      for (const proposal of allApproved) {
+        // Only mark as pushed if the SKU was found in the sheet
+        if (!result.notFound.includes(proposal.sku)) {
+          await db.updateProposalStatus(proposal.proposalId, 'pushed', 'system', 'Pushed to Google Sheets');
+        }
+      }
     }
-  }
 
-  return response(200, {
-    success: result.success,
-    pushed: updates.length,
-    errors: result.errors,
-  });
+    return response(200, {
+      success: result.updated > 0,
+      pushed: result.updated,
+      notFound: result.notFound,
+      message: `Updated ${result.updated} prices in Google Sheets. ChannelEngine will sync automatically.`,
+    });
+  } catch (err) {
+    console.error('Failed to update Google Sheets:', err);
+    return response(500, {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to update Google Sheets',
+    });
+  }
 }
 
 // ============ Rules ============
@@ -395,17 +629,25 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
     const products = await db.getAllProducts();
     const pendingProposals = await db.getProposalsByStatus('pending');
 
+    // Calculate margin on-the-fly for products with cost data
+    const productsWithCostData = products.filter((p) => p.costPrice > 0 && p.currentPrice > 0);
+    let totalMargin = 0;
+    for (const p of productsWithCostData) {
+      const priceExVat = p.currentPrice / 1.2;
+      const twentyPercent = priceExVat * 0.2;
+      const ppo = priceExVat - twentyPercent - (p.deliveryCost || 0) - p.costPrice;
+      const margin = priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
+      totalMargin += margin;
+    }
+
     const summary = {
       totalProducts: products.length,
-      productsWithCosts: products.filter((p) => p.costPrice > 0).length,
+      productsWithCosts: productsWithCostData.length,
       productsWithoutCosts: products.filter((p) => !p.costPrice || p.costPrice === 0).length,
       outOfStock: products.filter((p) => p.stockLevel === 0).length,
       lowStock: products.filter((p) => p.stockLevel > 0 && p.stockLevel < 10).length,
       pendingProposals: pendingProposals.length,
-      avgMargin:
-        products.length > 0
-          ? products.reduce((sum, p) => sum + (p.calculatedMargin || 0), 0) / products.length
-          : 0,
+      avgMargin: productsWithCostData.length > 0 ? totalMargin / productsWithCostData.length : 0,
     };
 
     return response(200, summary);
@@ -414,31 +656,304 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
   if (path.endsWith('/margins')) {
     const products = await db.getAllProducts();
 
-    // Group by margin bands
-    const marginBands = {
-      negative: products.filter((p) => (p.calculatedMargin || 0) < 0).length,
-      low: products.filter((p) => (p.calculatedMargin || 0) >= 0 && (p.calculatedMargin || 0) < 15).length,
-      target: products.filter((p) => (p.calculatedMargin || 0) >= 15 && (p.calculatedMargin || 0) < 30).length,
-      high: products.filter((p) => (p.calculatedMargin || 0) >= 30).length,
-    };
+    // Calculate margin on-the-fly and group by bands
+    const marginBands = { negative: 0, low: 0, target: 0, high: 0 };
+    let productsWithMargin = 0;
 
-    return response(200, { marginBands, total: products.length });
+    for (const p of products) {
+      if (p.costPrice > 0 && p.currentPrice > 0) {
+        const priceExVat = p.currentPrice / 1.2;
+        const twentyPercent = priceExVat * 0.2;
+        const ppo = priceExVat - twentyPercent - (p.deliveryCost || 0) - p.costPrice;
+        const margin = priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
+        productsWithMargin++;
+
+        if (margin < 0) marginBands.negative++;
+        else if (margin < 15) marginBands.low++;
+        else if (margin < 30) marginBands.target++;
+        else marginBands.high++;
+      }
+    }
+
+    return response(200, { marginBands, total: products.length, withCostData: productsWithMargin });
   }
 
   if (path.endsWith('/sales')) {
-    const days = parseInt(params.days || '7', 10);
-    const salesMap = await db.getSalesBySku(days);
+    const days = parseInt(params.days || '30', 10);
+    const includeDaily = params.includeDaily === 'true';
 
-    // Convert Map to object for JSON response
-    const sales: Record<string, { quantity: number; revenue: number }> = {};
-    salesMap.forEach((value, key) => {
-      sales[key] = value;
-    });
+    // Single scan to get all order lines in date range
+    const today = new Date();
+    const fromDate = new Date(today);
+    fromDate.setDate(fromDate.getDate() - days);
+    const fromDateStr = fromDate.toISOString().substring(0, 10);
+    const toDateStr = today.toISOString().substring(0, 10);
 
-    return response(200, { days, skuCount: salesMap.size, sales });
+    const orderLines = await db.getOrderLinesByDateRange(fromDateStr, toDateStr);
+
+    // Aggregate by SKU, channel, and optionally by day
+    const salesBySku: Record<string, { quantity: number; revenue: number }> = {};
+    const totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }> = {};
+    const dailySales: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>> = {};
+    const orderIdsByDate: Record<string, Set<string>> = {};
+    const allOrderIds = new Set<string>();
+
+    for (const line of orderLines) {
+      const sku = line.sku;
+      const channel = line.channelName || 'Unknown';
+      const dateDay = line.orderDateDay || '';
+      const orderId = line.orderId || '';
+
+      // SKU aggregation
+      if (!salesBySku[sku]) {
+        salesBySku[sku] = { quantity: 0, revenue: 0 };
+      }
+      salesBySku[sku].quantity += line.quantity || 0;
+      salesBySku[sku].revenue += line.lineTotalInclVat || 0;
+
+      // Channel aggregation
+      if (!totalsByChannel[channel]) {
+        totalsByChannel[channel] = { quantity: 0, revenue: 0, orders: 0 };
+      }
+      totalsByChannel[channel].quantity += line.quantity || 0;
+      totalsByChannel[channel].revenue += line.lineTotalInclVat || 0;
+
+      // Track unique orders per channel
+      const orderKey = `${channel}:${orderId}`;
+      if (!allOrderIds.has(orderKey)) {
+        allOrderIds.add(orderKey);
+        totalsByChannel[channel].orders++;
+      }
+
+      // Daily aggregation (if requested)
+      if (includeDaily && dateDay) {
+        if (!dailySales[dateDay]) {
+          dailySales[dateDay] = {};
+          orderIdsByDate[dateDay] = new Set();
+        }
+        if (!dailySales[dateDay][channel]) {
+          dailySales[dateDay][channel] = { quantity: 0, revenue: 0, orders: 0 };
+        }
+
+        dailySales[dateDay][channel].quantity += line.quantity || 0;
+        dailySales[dateDay][channel].revenue += line.lineTotalInclVat || 0;
+
+        const dayOrderKey = `${channel}:${orderId}`;
+        if (!orderIdsByDate[dateDay].has(dayOrderKey)) {
+          orderIdsByDate[dateDay].add(dayOrderKey);
+          dailySales[dateDay][channel].orders++;
+        }
+      }
+    }
+
+    // Calculate totals
+    let totalQuantity = 0;
+    let totalRevenue = 0;
+    let totalOrders = 0;
+    for (const channelData of Object.values(totalsByChannel)) {
+      totalQuantity += channelData.quantity;
+      totalRevenue += channelData.revenue;
+      totalOrders += channelData.orders;
+    }
+
+    const result: Record<string, unknown> = {
+      days,
+      fromDate: fromDateStr,
+      toDate: toDateStr,
+      skuCount: Object.keys(salesBySku).length,
+      sales: salesBySku,
+      totalsByChannel,
+      totals: {
+        quantity: totalQuantity,
+        revenue: Math.round(totalRevenue * 100) / 100,
+        orders: totalOrders,
+      },
+      channels: Object.keys(totalsByChannel).sort(),
+    };
+
+    if (includeDaily) {
+      result.dailySales = dailySales;
+    }
+
+    return response(200, result);
+  }
+
+  if (path.endsWith('/insights')) {
+    return handleInsights();
   }
 
   return response(404, { error: 'Analytics endpoint not found' });
+}
+
+// ============ Insights ============
+
+interface InsightProduct {
+  sku: string;
+  title: string;
+  brand: string;
+  imageUrl?: string;
+  currentPrice: number;
+  costPrice: number;
+  deliveryCost: number;
+  stockLevel: number;
+  margin: number;
+  avgDailySales: number;
+  avgDailyRevenue: number;
+  daysOfStock: number | null;
+}
+
+interface InsightCategory {
+  id: string;
+  title: string;
+  description: string;
+  count: number;
+  severity: 'critical' | 'warning' | 'info';
+  products: InsightProduct[];
+}
+
+async function handleInsights(): Promise<APIGatewayProxyResult> {
+  const products = await db.getAllProducts();
+
+  // Get 180-day sales data for calculating avg daily sales
+  const salesMap = await db.getSalesBySku(180);
+
+  // Helper to calculate margin
+  const calculateMargin = (p: Product): number => {
+    if (!p.currentPrice || p.currentPrice <= 0) return 0;
+    const priceExVat = p.currentPrice / 1.2; // Remove 20% VAT
+    const channelFee = priceExVat * 0.15; // ~15% average channel fee
+    const totalCost = (p.costPrice || 0) + (p.deliveryCost || 0) + channelFee;
+    const profit = priceExVat - totalCost;
+    return (profit / priceExVat) * 100;
+  };
+
+  // Helper to create insight product
+  const toInsightProduct = (p: Product, salesData?: { quantity: number; revenue: number }): InsightProduct => {
+    const avgDailySales = salesData ? salesData.quantity / 180 : 0;
+    const avgDailyRevenue = salesData ? salesData.revenue / 180 : 0;
+    const margin = calculateMargin(p);
+    const daysOfStock = avgDailySales > 0 ? p.stockLevel / avgDailySales : null;
+
+    return {
+      sku: p.sku,
+      title: p.title || '',
+      brand: p.brand || '',
+      imageUrl: p.imageUrl,
+      currentPrice: p.currentPrice || 0,
+      costPrice: p.costPrice || 0,
+      deliveryCost: p.deliveryCost || 0,
+      stockLevel: p.stockLevel || 0,
+      margin,
+      avgDailySales,
+      avgDailyRevenue,
+      daysOfStock,
+    };
+  };
+
+  // Build enriched product list with sales data
+  const enrichedProducts = products.map(p => {
+    const salesData = salesMap.get(p.sku);
+    return { product: p, salesData, insight: toInsightProduct(p, salesData) };
+  });
+
+  // Define insight categories
+  const insights: InsightCategory[] = [];
+
+  // 1. Low Sales & High Margin: Sales < 0.25/day but margin > 40% (exclude OOS)
+  const lowSalesHighMargin = enrichedProducts.filter(({ insight }) =>
+    insight.avgDailySales < 0.25 && insight.margin > 40 && insight.stockLevel > 0
+  );
+  insights.push({
+    id: 'low-sales-high-margin',
+    title: 'Low Sales & High Margin',
+    description: 'Products selling less than 0.25 units/day but with over 40% margin. Consider promotions or visibility improvements.',
+    count: lowSalesHighMargin.length,
+    severity: 'info',
+    products: lowSalesHighMargin.map(e => e.insight).slice(0, 100),
+  });
+
+  // 2. Danger Stock: Sales > 0.5/day but < 2 weeks of stock
+  const dangerStock = enrichedProducts.filter(({ insight }) =>
+    insight.avgDailySales > 0.5 &&
+    insight.daysOfStock !== null &&
+    insight.daysOfStock > 0 &&
+    insight.daysOfStock < 14
+  );
+  insights.push({
+    id: 'danger-stock',
+    title: 'Danger Stock',
+    description: 'Products selling over 0.5 units/day with less than 2 weeks of stock remaining. Reorder urgently.',
+    count: dangerStock.length,
+    severity: 'critical',
+    products: dangerStock.map(e => e.insight).slice(0, 100),
+  });
+
+  // 3. OOS Stock: Sales > 0.5/day but 0 stock
+  const oosStock = enrichedProducts.filter(({ insight }) =>
+    insight.avgDailySales > 0.5 && insight.stockLevel === 0
+  );
+  insights.push({
+    id: 'oos-stock',
+    title: 'Out of Stock (High Demand)',
+    description: 'Products with strong sales (over 0.5 units/day) that are currently out of stock. Lost revenue opportunity.',
+    count: oosStock.length,
+    severity: 'critical',
+    products: oosStock.map(e => e.insight).slice(0, 100),
+  });
+
+  // 4. Low Margin: Margin below 25%
+  const lowMargin = enrichedProducts.filter(({ insight }) =>
+    insight.margin >= 0 && insight.margin < 25 && insight.currentPrice > 0
+  );
+  insights.push({
+    id: 'low-margin',
+    title: 'Low Margin',
+    description: 'Products with margin below 25%. Review pricing or costs.',
+    count: lowMargin.length,
+    severity: 'warning',
+    products: lowMargin.map(e => e.insight).slice(0, 100),
+  });
+
+  // 5. Negative Margin: Products losing money
+  const negativeMargin = enrichedProducts.filter(({ insight }) =>
+    insight.margin < 0 && insight.currentPrice > 0
+  );
+  insights.push({
+    id: 'negative-margin',
+    title: 'Negative Margin',
+    description: 'Products losing money on every sale. Immediate price increase required or delist.',
+    count: negativeMargin.length,
+    severity: 'critical',
+    products: negativeMargin.map(e => e.insight).slice(0, 100),
+  });
+
+  // 6. SKU with no price
+  const noPrice = enrichedProducts.filter(({ product }) =>
+    !product.currentPrice || product.currentPrice <= 0
+  );
+  insights.push({
+    id: 'no-price',
+    title: 'Missing Price',
+    description: 'Products without a valid price set. These cannot be sold.',
+    count: noPrice.length,
+    severity: 'critical',
+    products: noPrice.map(e => e.insight).slice(0, 100),
+  });
+
+  // 7. SKU with no title
+  const noTitle = enrichedProducts.filter(({ product }) =>
+    !product.title || product.title.trim() === ''
+  );
+  insights.push({
+    id: 'no-title',
+    title: 'Missing Title',
+    description: 'Products without a title. Product data may be incomplete.',
+    count: noTitle.length,
+    severity: 'warning',
+    products: noTitle.map(e => e.insight).slice(0, 100),
+  });
+
+  return response(200, { insights });
 }
 
 // ============ Import ============
@@ -576,7 +1091,18 @@ async function handleDeliveryImport(event: APIGatewayProxyEvent): Promise<APIGat
   const productsBySku = new Map(allProducts.map(p => [p.sku, p]));
   console.log(`[DeliveryImport] Loaded ${allProducts.length} products for delivery cost calculation`);
   // Create lookup map for orders by channelOrderNo
+  // Also create a lookup by base PO number (without suffix like -A, -B, -REM)
   const orderByChannelOrderNo = new Map(allOrders.map(o => [o.channelOrderNo, o]));
+  const orderByBasePoNumber = new Map<string, typeof allOrders[0]>();
+  for (const order of allOrders) {
+    if (order.channelOrderNo && order.channelOrderNo.includes('-')) {
+      const basePo = order.channelOrderNo.split('-')[0];
+      // Only add if not already present (first match wins)
+      if (!orderByBasePoNumber.has(basePo)) {
+        orderByBasePoNumber.set(basePo, order);
+      }
+    }
+  }
 
   const carriersFound = new Set<string>();
   const excludedCarriers = new Set<string>();
@@ -619,10 +1145,12 @@ async function handleDeliveryImport(event: APIGatewayProxyEvent): Promise<APIGat
     // Try direct match first
     let matchedOrder = orderByChannelOrderNo.get(poNumber);
 
-    // If not found, try stripping suffixes like "-REM"
-    if (!matchedOrder && poNumber.includes('-')) {
-      const basePoNumber = poNumber.split('-')[0];
-      matchedOrder = orderByChannelOrderNo.get(basePoNumber);
+    // If not found, try matching by base PO number
+    // Vector might send "1054423487" but DB has "1054423487-A"
+    if (!matchedOrder) {
+      // Strip suffix from Vector input and try base lookup
+      const basePoNumber = poNumber.includes('-') ? poNumber.split('-')[0] : poNumber;
+      matchedOrder = orderByBasePoNumber.get(basePoNumber);
     }
 
     if (matchedOrder) {
@@ -638,11 +1166,14 @@ async function handleDeliveryImport(event: APIGatewayProxyEvent): Promise<APIGat
       // Split delivery cost proportionally by line value (so accessories don't get full delivery cost)
       const lines = matchedOrder.lines || [];
       const carrierCost = carrierCostMap.get(normalizedCarrier) || 0;
-      const orderDeliveryCost = record.parcels * carrierCost;
+      // Delivery cost is per order, not per parcel (parcels is just how warehouse splits shipment)
+      const orderDeliveryCost = carrierCost;
 
       // Calculate total order value for proportional split
+      // Use lineTotalInclVat directly (it already includes quantity),
+      // only multiply by quantity when falling back to unitPriceInclVat
       const totalOrderValue = lines.reduce((sum, line) => {
-        const lineValue = (line.lineTotalInclVat || line.unitPriceInclVat || 0) * (line.quantity || 1);
+        const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
         return sum + lineValue;
       }, 0);
 
@@ -663,7 +1194,8 @@ async function handleDeliveryImport(event: APIGatewayProxyEvent): Promise<APIGat
         stats.carrierCounts[normalizedCarrier] = (stats.carrierCounts[normalizedCarrier] || 0) + 1;
 
         // Split delivery cost proportionally by line value
-        const lineValue = (line.lineTotalInclVat || line.unitPriceInclVat || 0) * (line.quantity || 1);
+        // Use lineTotalInclVat directly (it already includes quantity)
+        const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
         const valueShare = totalOrderValue > 0 ? lineValue / totalOrderValue : 1 / lines.length;
         const lineDeliveryCost = orderDeliveryCost * valueShare;
 
@@ -793,6 +1325,312 @@ async function handleDeliveryImport(event: APIGatewayProxyEvent): Promise<APIGat
   });
 }
 
+// ============ Recalculate Delivery Costs ============
+
+/**
+ * Recalculates delivery costs for all products based on existing order delivery data.
+ * This aggregates delivery costs from all orders that have delivery info,
+ * using the corrected proportional split logic.
+ */
+async function handleRecalculateDeliveryCosts(): Promise<APIGatewayProxyResult> {
+  console.log('[RecalculateDelivery] Starting recalculation from order history');
+
+  // Get all orders and carrier costs
+  const [allOrders, carrierCosts, allProducts] = await Promise.all([
+    db.getAllOrders(),
+    db.getAllCarrierCosts(),
+    db.getAllProducts(),
+  ]);
+
+  // Build carrier cost lookup
+  const carrierCostMap = new Map<string, number>();
+  for (const carrier of carrierCosts) {
+    carrierCostMap.set(carrier.carrierId, carrier.costPerParcel);
+  }
+
+  // Build product lookup by SKU
+  const productsBySku = new Map<string, Product>();
+  for (const product of allProducts) {
+    productsBySku.set(product.sku.toUpperCase(), product);
+  }
+
+  // Filter orders that have delivery info
+  const ordersWithDelivery = allOrders.filter(
+    order => order.deliveryCarrier && order.deliveryParcels && order.deliveryParcels > 0
+  );
+
+  console.log(`[RecalculateDelivery] Found ${ordersWithDelivery.length} orders with delivery data out of ${allOrders.length} total`);
+
+  // Aggregate delivery stats by SKU
+  const skuDeliveryStats = new Map<string, {
+    carrierCounts: Record<string, number>;
+    totalDeliveryCost: number;
+    totalQuantity: number;
+    orderCount: number;
+  }>();
+
+  let ordersProcessed = 0;
+  let ordersSkipped = 0;
+
+  for (const order of ordersWithDelivery) {
+    const carrier = order.deliveryCarrier!;
+    const parcels = order.deliveryParcels!;
+
+    // Skip excluded carriers
+    if (isExcludedCarrier(carrier)) {
+      ordersSkipped++;
+      continue;
+    }
+
+    const lines = order.lines || [];
+    if (lines.length === 0) {
+      ordersSkipped++;
+      continue;
+    }
+
+    const carrierCost = carrierCostMap.get(carrier) || 0;
+    // Delivery cost is per order, not per parcel (parcels is just how warehouse splits shipment)
+    const orderDeliveryCost = carrierCost;
+
+    // Calculate total order value for proportional split
+    // FIX: Use lineTotalInclVat directly (it already includes quantity),
+    // only multiply by quantity when falling back to unitPriceInclVat
+    const totalOrderValue = lines.reduce((sum, line) => {
+      const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
+      return sum + lineValue;
+    }, 0);
+
+    for (const line of lines) {
+      const sku = line.sku?.toUpperCase();
+      if (!sku) continue;
+
+      if (!skuDeliveryStats.has(sku)) {
+        skuDeliveryStats.set(sku, {
+          carrierCounts: {},
+          totalDeliveryCost: 0,
+          totalQuantity: 0,
+          orderCount: 0,
+        });
+      }
+
+      const stats = skuDeliveryStats.get(sku)!;
+      stats.carrierCounts[carrier] = (stats.carrierCounts[carrier] || 0) + 1;
+
+      // Split delivery cost proportionally by line value
+      // FIX: Use lineTotalInclVat directly (it already includes quantity)
+      const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
+      const valueShare = totalOrderValue > 0 ? lineValue / totalOrderValue : 1 / lines.length;
+      const lineDeliveryCost = orderDeliveryCost * valueShare;
+
+      stats.totalDeliveryCost += lineDeliveryCost;
+      stats.totalQuantity += line.quantity || 1;
+      stats.orderCount += 1;
+    }
+
+    ordersProcessed++;
+  }
+
+  console.log(`[RecalculateDelivery] Processed ${ordersProcessed} orders, skipped ${ordersSkipped}`);
+
+  // Calculate delivery costs per SKU and update products
+  let productsUpdated = 0;
+  let productsUnchanged = 0;
+  const updatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string }> = [];
+
+  for (const [sku, stats] of skuDeliveryStats) {
+    // Find predominant carrier
+    let predominantCarrier = 'unknown';
+    let maxCount = 0;
+    for (const [carrier, count] of Object.entries(stats.carrierCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        predominantCarrier = carrier;
+      }
+    }
+
+    // Calculate delivery cost per unit
+    const deliveryCost = stats.totalQuantity > 0
+      ? stats.totalDeliveryCost / stats.totalQuantity
+      : 0;
+
+    const product = productsBySku.get(sku);
+    if (product && stats.totalDeliveryCost > 0) {
+      const roundedCost = Math.round(deliveryCost * 100) / 100;
+      const oldCost = product.deliveryCost || 0;
+
+      if (oldCost !== roundedCost) {
+        await db.putProduct({
+          ...product,
+          deliveryCost: roundedCost,
+        });
+        productsUpdated++;
+        updatedSkus.push({
+          sku,
+          oldCost,
+          newCost: roundedCost,
+          carrier: predominantCarrier,
+        });
+      } else {
+        productsUnchanged++;
+      }
+    }
+  }
+
+  console.log(`[RecalculateDelivery] Complete: ${productsUpdated} products updated from orders, ${productsUnchanged} unchanged`);
+
+  // ===== PHASE 2: Fill missing delivery costs using category averages =====
+  console.log('[RecalculateDelivery] Phase 2: Filling missing delivery costs using category averages');
+
+  // Calculate category averages from SKUs with real order-derived delivery costs
+  const categoryStats = new Map<string, { total: number; count: number }>();
+
+  for (const [sku, stats] of skuDeliveryStats) {
+    if (stats.totalQuantity === 0 || stats.totalDeliveryCost === 0) continue;
+
+    const product = productsBySku.get(sku);
+    if (!product || !product.category) continue;
+
+    const deliveryCostPerUnit = stats.totalDeliveryCost / stats.totalQuantity;
+    const primaryCategory = product.category.split(',')[0].trim();
+
+    const catStats = categoryStats.get(primaryCategory) || { total: 0, count: 0 };
+    catStats.total += deliveryCostPerUnit;
+    catStats.count += 1;
+    categoryStats.set(primaryCategory, catStats);
+  }
+
+  // Calculate category averages
+  const categoryAverages = new Map<string, number>();
+  for (const [category, stats] of categoryStats) {
+    categoryAverages.set(category, Math.round((stats.total / stats.count) * 100) / 100);
+  }
+
+  console.log(`[RecalculateDelivery] Calculated averages for ${categoryAverages.size} categories`);
+
+  // Calculate overall average as fallback
+  let overallTotal = 0;
+  let overallCount = 0;
+  for (const stats of categoryStats.values()) {
+    overallTotal += stats.total;
+    overallCount += stats.count;
+  }
+  const overallAverage = overallCount > 0 ? Math.round((overallTotal / overallCount) * 100) / 100 : 0;
+  console.log(`[RecalculateDelivery] Overall average delivery cost: £${overallAverage}`);
+
+  // Fill products without delivery costs using category averages
+  // Special rule: Products with "Suite" in title or weight > 30kg get £45 delivery
+  const SUITE_DELIVERY_COST = 45;
+  const HEAVY_WEIGHT_THRESHOLD = 30; // kg
+
+  let productsFilled = 0;
+  let suiteProductsUpdated = 0;
+  const filledSkus: Array<{ sku: string; category: string; newCost: number; source: string }> = [];
+
+  for (const product of allProducts) {
+    const skuUpper = product.sku.toUpperCase();
+    const title = (product.title || '').toLowerCase();
+
+    // Check if product is a "Suite" (large item) or heavy (>30kg)
+    const isSuite = title.includes('suite');
+    const isHeavy = (product.weight || 0) > HEAVY_WEIGHT_THRESHOLD;
+    const needsSuiteDeliveryCost = isSuite || isHeavy;
+
+    // For suite/heavy products, update even if they have a delivery cost (if it's too low)
+    if (needsSuiteDeliveryCost) {
+      const currentCost = product.deliveryCost || 0;
+      if (currentCost < SUITE_DELIVERY_COST) {
+        await db.putProduct({
+          ...product,
+          deliveryCost: SUITE_DELIVERY_COST,
+        });
+        suiteProductsUpdated++;
+        if (filledSkus.length < 100) {
+          const reason = isHeavy ? `heavy ${product.weight}kg` : 'suite in title';
+          filledSkus.push({
+            sku: product.sku,
+            category: product.category || 'none',
+            newCost: SUITE_DELIVERY_COST,
+            source: `${reason} (was £${currentCost})`,
+          });
+        }
+      }
+      continue; // Skip normal category fill for suite/heavy products
+    }
+
+    // Skip products that have order-derived delivery costs
+    if (skuDeliveryStats.has(skuUpper)) continue;
+
+    // Skip products that already have a delivery cost
+    if (product.deliveryCost && product.deliveryCost > 0) continue;
+
+    let deliveryCost = 0;
+    let source = 'none';
+
+    if (product.category) {
+      const primaryCategory = product.category.split(',')[0].trim();
+      const categoryAvg = categoryAverages.get(primaryCategory);
+
+      if (categoryAvg && categoryAvg > 0) {
+        deliveryCost = categoryAvg;
+        source = `category: ${primaryCategory}`;
+      } else if (overallAverage > 0) {
+        deliveryCost = overallAverage;
+        source = 'overall avg';
+      }
+    } else if (overallAverage > 0) {
+      deliveryCost = overallAverage;
+      source = 'overall avg (no category)';
+    }
+
+    if (deliveryCost > 0) {
+      await db.putProduct({
+        ...product,
+        deliveryCost,
+      });
+      productsFilled++;
+      if (filledSkus.length < 100) {
+        filledSkus.push({
+          sku: product.sku,
+          category: product.category || 'none',
+          newCost: deliveryCost,
+          source,
+        });
+      }
+    }
+  }
+
+  console.log(`[RecalculateDelivery] Filled ${productsFilled} products with category averages, ${suiteProductsUpdated} suite products updated to £${SUITE_DELIVERY_COST}`);
+
+  // Build category summary
+  const categorySummary: Array<{ category: string; avgDeliveryCost: number; skusWithOrderData: number }> = [];
+  for (const [category, avg] of categoryAverages) {
+    const stats = categoryStats.get(category)!;
+    categorySummary.push({
+      category,
+      avgDeliveryCost: avg,
+      skusWithOrderData: stats.count,
+    });
+  }
+  categorySummary.sort((a, b) => b.skusWithOrderData - a.skusWithOrderData);
+
+  return response(200, {
+    message: 'Delivery cost recalculation complete',
+    ordersWithDeliveryData: ordersWithDelivery.length,
+    ordersProcessed,
+    ordersSkipped,
+    skusAnalyzed: skuDeliveryStats.size,
+    productsUpdatedFromOrders: productsUpdated,
+    productsUnchanged,
+    productsFilledFromCategoryAvg: productsFilled,
+    suiteProductsUpdated,
+    overallAverageDeliveryCost: overallAverage,
+    categoriesWithData: categoryAverages.size,
+    categorySummary: categorySummary.slice(0, 20),
+    updatedSkus: updatedSkus.slice(0, 50),
+    filledSkus: filledSkus.slice(0, 50),
+  });
+}
+
 // ============ Carriers ============
 
 async function handleCarriers(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
@@ -869,6 +1707,7 @@ async function handleHistory(event: APIGatewayProxyEvent): Promise<APIGatewayPro
     const decodedSku = decodeURIComponent(sku);
     const fromDate = params.fromDate;
     const toDate = params.toDate;
+    const includeChannelSales = params.includeChannelSales === 'true';
 
     // Default to last 180 days if no dates specified
     const defaultFrom = new Date();
@@ -881,10 +1720,17 @@ async function handleHistory(event: APIGatewayProxyEvent): Promise<APIGatewayPro
     // Also get the current product info
     const product = await db.getProduct(decodedSku);
 
+    // Optionally fetch channel-level sales data from orders
+    let channelSales: Record<string, Record<string, { quantity: number; revenue: number }>> | undefined;
+    if (includeChannelSales) {
+      channelSales = await getChannelSalesByDay(decodedSku, from, to);
+    }
+
     return response(200, {
       sku: decodedSku,
       product,
       history,
+      channelSales,
       fromDate: from,
       toDate: to,
       recordCount: history.length,
@@ -892,6 +1738,41 @@ async function handleHistory(event: APIGatewayProxyEvent): Promise<APIGatewayPro
   }
 
   return response(400, { error: 'SKU parameter required. Use GET /history/{sku}' });
+}
+
+/**
+ * Get sales by channel for each day for a specific SKU
+ * Uses the order-lines table for fast SKU-based queries (single query instead of 180+ queries)
+ * Returns: { "2025-11-28": { "Amazon": { quantity: 5, revenue: 100 }, "eBay": { quantity: 2, revenue: 40 } }, ... }
+ */
+async function getChannelSalesByDay(
+  sku: string,
+  fromDate: string,
+  toDate: string
+): Promise<Record<string, Record<string, { quantity: number; revenue: number }>>> {
+  // Single query to get all order lines for this SKU in the date range
+  const orderLines = await db.getOrderLinesBySku(sku, fromDate, toDate);
+
+  const result: Record<string, Record<string, { quantity: number; revenue: number }>> = {};
+
+  for (const line of orderLines) {
+    const orderDate = line.orderDateDay;
+    if (!orderDate) continue;
+
+    const channelName = line.channelName || 'Unknown';
+
+    if (!result[orderDate]) {
+      result[orderDate] = {};
+    }
+    if (!result[orderDate][channelName]) {
+      result[orderDate][channelName] = { quantity: 0, revenue: 0 };
+    }
+
+    result[orderDate][channelName].quantity += line.quantity || 0;
+    result[orderDate][channelName].revenue += line.lineTotalInclVat || 0;
+  }
+
+  return result;
 }
 
 // ============ Manual Sync ============
@@ -906,7 +1787,7 @@ async function handleManualSync(event: APIGatewayProxyEvent): Promise<APIGateway
 
 // ============ History Backfill ============
 
-async function handleHistoryBackfill(): Promise<APIGatewayProxyResult> {
+async function handleHistoryBackfill(event?: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   console.log('Starting history backfill from order data...');
 
   // Get all products for current price/cost info
@@ -914,10 +1795,16 @@ async function handleHistoryBackfill(): Promise<APIGatewayProxyResult> {
   const productMap = new Map(products.map((p) => [p.sku, p]));
   console.log(`Loaded ${products.length} products`);
 
-  // Get date range - last 180 days
+  // Get date range from query params or default to 400 days (covers Nov 2024 - Dec 2025)
+  const daysParam = event?.queryStringParameters?.days;
+  const fromParam = event?.queryStringParameters?.from;
+  const days = daysParam ? parseInt(daysParam, 10) : 400;
+
   const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 180);
+  const startDate = fromParam ? new Date(fromParam) : new Date();
+  if (!fromParam) {
+    startDate.setDate(startDate.getDate() - days);
+  }
 
   // Generate list of dates
   const dates: string[] = [];
@@ -970,9 +1857,12 @@ async function handleHistoryBackfill(): Promise<APIGatewayProxyResult> {
       }
 
       // Create history records for SKUs with sales that day
+      // Note: We only have order data for backfill, not historical stock/price data
+      // So we record sales/revenue but leave stock as 0 (unknown)
       for (const [sku, sales] of dailySales) {
         const product = productMap.get(sku);
         if (product) {
+          // Use current price/cost as approximation (we don't have historical prices)
           const price = product.currentPrice || 0;
           const costPrice = product.costPrice || 0;
           const margin = price > 0 && costPrice > 0 ? ((price - costPrice) / price) * 100 : undefined;
@@ -982,7 +1872,7 @@ async function handleHistoryBackfill(): Promise<APIGatewayProxyResult> {
             date: dateDay,
             price,
             costPrice: costPrice || undefined,
-            stockLevel: product.stockLevel || 0,
+            stockLevel: 0, // We don't have historical stock data - set to 0
             dailySales: sales.quantity,
             dailyRevenue: sales.revenue,
             margin,
@@ -1005,6 +1895,345 @@ async function handleHistoryBackfill(): Promise<APIGatewayProxyResult> {
   return response(200, {
     message: 'History backfill complete',
     recordsCreated: totalRecords,
+    dateRange: { from: dates[0], to: dates[dates.length - 1] },
+  });
+}
+
+// ============ Competitors ============
+
+async function handleCompetitors(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const method = event.httpMethod;
+  const path = event.path;
+  const sku = event.pathParameters?.sku;
+
+  // POST /competitors/scrape - Trigger manual scrape for all products
+  if (path === '/competitors/scrape' && method === 'POST') {
+    console.log('Starting manual competitor scrape...');
+
+    const products = await db.getAllProducts();
+    const productsWithCompetitors = products.filter(p => p.competitorUrls && p.competitorUrls.length > 0);
+
+    if (productsWithCompetitors.length === 0) {
+      return response(200, { message: 'No products with competitor URLs configured', scraped: 0 });
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+    const results: Array<{ sku: string; lowestPrice: number | null; errors: string[] }> = [];
+
+    for (const product of productsWithCompetitors) {
+      try {
+        const result = await scrapeProductCompetitors(product);
+
+        const updatedProduct: Product = {
+          ...product,
+          competitorUrls: result.updatedUrls,
+          competitorFloorPrice: result.lowestPrice ?? undefined,
+          competitorPricesLastUpdated: new Date().toISOString(),
+        };
+
+        await db.putProduct(updatedProduct);
+
+        results.push({ sku: product.sku, lowestPrice: result.lowestPrice, errors: result.errors });
+
+        if (result.lowestPrice !== null) {
+          successCount++;
+        } else {
+          errorCount++;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        results.push({ sku: product.sku, lowestPrice: null, errors: [message] });
+        errorCount++;
+      }
+    }
+
+    return response(200, {
+      message: 'Competitor scrape complete',
+      totalProducts: productsWithCompetitors.length,
+      successCount,
+      errorCount,
+      results,
+    });
+  }
+
+  // POST /competitors/scrape/:sku - Scrape competitors for a single product
+  if (path.match(/\/competitors\/scrape\/[^/]+/) && method === 'POST') {
+    const skuFromPath = path.split('/').pop();
+    if (!skuFromPath) {
+      return response(400, { error: 'SKU required' });
+    }
+
+    const product = await db.getProduct(skuFromPath);
+    if (!product) {
+      return response(404, { error: 'Product not found' });
+    }
+
+    if (!product.competitorUrls || product.competitorUrls.length === 0) {
+      return response(400, { error: 'No competitor URLs configured for this product' });
+    }
+
+    const result = await scrapeProductCompetitors(product);
+
+    const updatedProduct: Product = {
+      ...product,
+      competitorUrls: result.updatedUrls,
+      competitorFloorPrice: result.lowestPrice ?? undefined,
+      competitorPricesLastUpdated: new Date().toISOString(),
+    };
+
+    await db.putProduct(updatedProduct);
+
+    return response(200, {
+      sku: product.sku,
+      lowestPrice: result.lowestPrice,
+      competitorUrls: result.updatedUrls,
+      errors: result.errors,
+    });
+  }
+
+  // POST /competitors/add-url - Add a competitor URL to a product
+  if (path === '/competitors/add-url' && method === 'POST') {
+    const body = JSON.parse(event.body || '{}');
+    const { sku: targetSku, url } = body;
+
+    if (!targetSku || !url) {
+      return response(400, { error: 'sku and url are required' });
+    }
+
+    const product = await db.getProduct(targetSku);
+    if (!product) {
+      return response(404, { error: 'Product not found' });
+    }
+
+    const competitorName = getCompetitorNameFromUrl(url);
+    const newEntry: CompetitorUrl = {
+      id: uuid(),
+      competitorName,
+      url,
+    };
+
+    const existingUrls = product.competitorUrls || [];
+
+    // Check if URL already exists
+    if (existingUrls.some(u => u.url === url)) {
+      return response(400, { error: 'URL already exists for this product' });
+    }
+
+    const updatedProduct: Product = {
+      ...product,
+      competitorUrls: [...existingUrls, newEntry],
+    };
+
+    await db.putProduct(updatedProduct);
+
+    return response(200, {
+      message: 'Competitor URL added',
+      sku: targetSku,
+      competitorUrls: updatedProduct.competitorUrls,
+    });
+  }
+
+  // DELETE /competitors/remove-url - Remove a competitor URL from a product
+  if (path === '/competitors/remove-url' && method === 'DELETE') {
+    const body = JSON.parse(event.body || '{}');
+    const { sku: targetSku, urlId } = body;
+
+    if (!targetSku || !urlId) {
+      return response(400, { error: 'sku and urlId are required' });
+    }
+
+    const product = await db.getProduct(targetSku);
+    if (!product) {
+      return response(404, { error: 'Product not found' });
+    }
+
+    const existingUrls = product.competitorUrls || [];
+    const filteredUrls = existingUrls.filter(u => u.id !== urlId);
+
+    if (filteredUrls.length === existingUrls.length) {
+      return response(404, { error: 'URL not found' });
+    }
+
+    const updatedProduct: Product = {
+      ...product,
+      competitorUrls: filteredUrls,
+      // Recalculate floor price from remaining URLs
+      competitorFloorPrice: filteredUrls.length > 0
+        ? Math.min(...filteredUrls.filter(u => u.lastPrice).map(u => u.lastPrice!))
+        : undefined,
+    };
+
+    await db.putProduct(updatedProduct);
+
+    return response(200, {
+      message: 'Competitor URL removed',
+      sku: targetSku,
+      competitorUrls: updatedProduct.competitorUrls,
+    });
+  }
+
+  return response(404, { error: 'Competitor endpoint not found' });
+}
+
+// ============ Order Lines Backfill ============
+
+// ============ Prices ============
+
+/**
+ * Handle price updates to Google Sheets
+ * PUT /prices/{sku} - Update a single channel price
+ * Body: { channelId: string, price: number }
+ */
+async function handlePrices(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const method = event.httpMethod;
+  const sku = event.pathParameters?.sku;
+
+  if (method === 'PUT' && sku) {
+    const body = JSON.parse(event.body || '{}');
+    const { channelId, price } = body;
+
+    if (!channelId || typeof price !== 'number') {
+      return response(400, { error: 'channelId and price are required' });
+    }
+
+    if (price < 0) {
+      return response(400, { error: 'Price must be non-negative' });
+    }
+
+    // Verify product exists
+    const product = await db.getProduct(sku);
+    if (!product) {
+      return response(404, { error: 'Product not found' });
+    }
+
+    // Update Google Sheets
+    const gsSecretArn = process.env.GOOGLE_SHEETS_SECRET_ARN;
+    if (!gsSecretArn) {
+      return response(500, { error: 'Google Sheets not configured' });
+    }
+
+    try {
+      const { createGoogleSheetsService } = await import('@repricing/core');
+      const gsService = await createGoogleSheetsService(gsSecretArn, false); // false = write access
+      const result = await gsService.updateChannelPrice(sku, channelId, price);
+
+      if (!result.success) {
+        return response(400, { error: result.error });
+      }
+
+      // Also update DynamoDB so the UI reflects the change immediately
+      const updatedProduct = {
+        ...product,
+        channelPrices: { ...product.channelPrices, [channelId]: price }
+      };
+      await db.putProduct(updatedProduct);
+
+      console.log(`Updated price for ${sku} on ${channelId} to £${price}`);
+
+      return response(200, {
+        success: true,
+        message: `Price updated for ${sku} on ${channelId}`,
+        sku,
+        channelId,
+        price,
+      });
+    } catch (err) {
+      console.error('Failed to update price:', err);
+      return response(500, {
+        error: err instanceof Error ? err.message : 'Failed to update price',
+      });
+    }
+  }
+
+  return response(404, { error: 'Price endpoint not found' });
+}
+
+// ============ Order Lines Backfill ============
+
+/**
+ * Backfill order-lines table from existing orders
+ * POST /order-lines/backfill
+ * Body: { fromDate?: "YYYY-MM-DD", toDate?: "YYYY-MM-DD" }
+ */
+async function handleOrderLinesBackfill(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const body = JSON.parse(event.body || '{}');
+
+  // Default to last 2 years if not specified
+  const endDate = body.toDate ? new Date(body.toDate) : new Date();
+  const startDate = body.fromDate
+    ? new Date(body.fromDate)
+    : new Date(endDate.getTime() - 730 * 24 * 60 * 60 * 1000); // 2 years
+
+  console.log(`Backfilling order-lines from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+  // Generate list of dates
+  const dates: string[] = [];
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    dates.push(current.toISOString().substring(0, 10));
+    current.setDate(current.getDate() + 1);
+  }
+  console.log(`Processing ${dates.length} days`);
+
+  // Process in batches of 50 days
+  const batchSize = 50;
+  let totalLineRecords = 0;
+  let totalOrders = 0;
+  const syncedAt = new Date().toISOString();
+
+  for (let i = 0; i < dates.length; i += batchSize) {
+    const dateBatch = dates.slice(i, i + batchSize);
+
+    // Fetch orders for all days in batch in parallel
+    const orderPromises = dateBatch.map((date) => db.getOrdersByDate(date));
+    const orderResults = await Promise.all(orderPromises);
+
+    // Build order line records
+    const lineRecords: OrderLineRecord[] = [];
+
+    for (const orders of orderResults) {
+      for (const order of orders) {
+        totalOrders++;
+        if (order.lines) {
+          for (const line of order.lines) {
+            lineRecords.push({
+              sku: line.sku,
+              orderDate: `${order.orderDate}#${order.orderId}`, // Composite key for uniqueness
+              orderId: order.orderId,
+              channelName: order.channelName,
+              channelId: order.channelId,
+              orderDateDay: order.orderDateDay,
+              quantity: line.quantity,
+              unitPriceInclVat: line.unitPriceInclVat,
+              unitPriceExclVat: line.unitPriceExclVat,
+              lineTotalInclVat: line.lineTotalInclVat,
+              lineTotalExclVat: line.lineTotalExclVat,
+              lineVat: line.lineVat,
+              vatRate: line.vatRate,
+              description: line.description,
+              gtin: line.gtin,
+              syncedAt,
+            });
+          }
+        }
+      }
+    }
+
+    // Batch write line records
+    if (lineRecords.length > 0) {
+      await db.batchPutOrderLines(lineRecords);
+      totalLineRecords += lineRecords.length;
+      console.log(`Batch ${Math.floor(i / batchSize) + 1}: wrote ${lineRecords.length} line records from ${dateBatch.length} days`);
+    }
+  }
+
+  console.log(`Backfill complete: ${totalLineRecords} order line records from ${totalOrders} orders`);
+
+  return response(200, {
+    message: 'Order lines backfill complete',
+    orderLinesCreated: totalLineRecords,
+    ordersProcessed: totalOrders,
     dateRange: { from: dates[0], to: dates[dates.length - 1] },
   });
 }
