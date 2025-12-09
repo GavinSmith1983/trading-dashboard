@@ -5,6 +5,17 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+// Storage key for current account (shared with AccountContext)
+const ACCOUNT_STORAGE_KEY = 'repricing-v2-current-account';
+
+/**
+ * Get the current account ID from localStorage
+ * This allows the API client to include the X-Account-Id header
+ */
+function getCurrentAccountId(): string | null {
+  return localStorage.getItem(ACCOUNT_STORAGE_KEY);
+}
+
 // Cognito configuration
 const COGNITO_CONFIG = {
   UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || 'eu-west-2_t4tJsxt3z',
@@ -48,6 +59,12 @@ async function request<T>(
   // Add Authorization header if we have a token
   if (token) {
     (headers as Record<string, string>)['Authorization'] = token;
+  }
+
+  // Add X-Account-Id header for V2 multi-tenant API
+  const accountId = getCurrentAccountId();
+  if (accountId) {
+    (headers as Record<string, string>)['X-Account-Id'] = accountId;
   }
 
   const response = await fetch(url, {

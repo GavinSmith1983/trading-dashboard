@@ -214,17 +214,26 @@ export class DynamoDBService {
   }
 
   async getProposalsByStatus(status: ProposalStatus): Promise<PriceProposal[]> {
-    const result = await this.docClient.send(
-      new QueryCommand({
-        TableName: this.proposalsTable,
-        IndexName: 'by-status',
-        KeyConditionExpression: '#status = :status',
-        ExpressionAttributeNames: { '#status': 'status' },
-        ExpressionAttributeValues: { ':status': status },
-        ScanIndexForward: false, // Most recent first
-      })
-    );
-    return (result.Items as PriceProposal[]) || [];
+    const items: PriceProposal[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new QueryCommand({
+          TableName: this.proposalsTable,
+          IndexName: 'by-status',
+          KeyConditionExpression: '#status = :status',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: { ':status': status },
+          ScanIndexForward: false, // Most recent first
+          ExclusiveStartKey: lastKey,
+        })
+      );
+      items.push(...((result.Items as PriceProposal[]) || []));
+      lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (lastKey);
+
+    return items;
   }
 
   async queryProposals(
@@ -262,8 +271,14 @@ export class DynamoDBService {
     }
 
     if (filters.appliedRuleName) {
-      filterExpressions.push('appliedRuleName = :appliedRuleName');
-      expressionAttributeValues[':appliedRuleName'] = filters.appliedRuleName;
+      if (filters.appliedRuleName === '__NO_RULE__') {
+        // Filter for proposals with no rule applied (appliedRuleName is missing or empty)
+        filterExpressions.push('(attribute_not_exists(appliedRuleName) OR appliedRuleName = :emptyString)');
+        expressionAttributeValues[':emptyString'] = '';
+      } else {
+        filterExpressions.push('appliedRuleName = :appliedRuleName');
+        expressionAttributeValues[':appliedRuleName'] = filters.appliedRuleName;
+      }
     }
 
     // Paginate through all scan results (DynamoDB returns max 1MB per scan)

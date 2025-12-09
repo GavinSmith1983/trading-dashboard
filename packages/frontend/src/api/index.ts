@@ -77,6 +77,23 @@ export const proposalsApi = {
   bulkReject: (proposalIds: string[], reviewedBy: string, notes?: string) =>
     api.post('/proposals/bulk-reject', { proposalIds, reviewedBy, notes }),
 
+  bulkApproveFiltered: (filters: Omit<ProposalFilters, 'page' | 'pageSize'>, reviewedBy: string, notes?: string) =>
+    api.post<{ success: boolean; approvedCount: number; message: string }>('/proposals/bulk-approve-filtered', {
+      filters,
+      reviewedBy,
+      notes,
+    }),
+
+  statusCounts: () =>
+    api.get<{
+      pending: number;
+      approved: number;
+      modified: number;
+      rejected: number;
+      pushed: number;
+      totalApproved: number;
+    }>('/proposals/status-counts'),
+
   push: (dryRun = false) =>
     api.post<{ success: boolean; pushed: number; errors: string[] }>('/proposals/push', { dryRun }),
 };
@@ -136,6 +153,7 @@ export interface InsightCategory {
   count: number;
   severity: 'critical' | 'warning' | 'info';
   products: InsightProduct[];
+  dailyRevenueImpact?: number;
 }
 
 export interface InsightsResponse {
@@ -153,6 +171,12 @@ export interface SalesResponse {
   totals: { quantity: number; revenue: number; orders: number };
   channels: string[];
   dailySales?: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>>;
+  previousYear?: {
+    fromDate: string;
+    toDate: string;
+    dailySales: Record<string, { quantity: number; revenue: number; orders: number }>;
+    totals: { quantity: number; revenue: number; orders: number };
+  };
 }
 
 export const analyticsApi = {
@@ -161,8 +185,8 @@ export const analyticsApi = {
   margins: () =>
     api.get<{ marginBands: Record<string, number>; total: number }>('/analytics/margins'),
 
-  sales: (days: number = 30, includeDaily: boolean = false) =>
-    api.get<SalesResponse>(`/analytics/sales?days=${days}${includeDaily ? '&includeDaily=true' : ''}`),
+  sales: (days: number = 30, includeDaily: boolean = false, includePreviousYear: boolean = false) =>
+    api.get<SalesResponse>(`/analytics/sales?days=${days}${includeDaily ? '&includeDaily=true' : ''}${includePreviousYear ? '&includePreviousYear=true' : ''}`),
 
   insights: () => api.get<InsightsResponse>('/analytics/insights'),
 };
@@ -324,4 +348,104 @@ export interface PriceUpdateResult {
 export const pricesApi = {
   updateChannelPrice: (sku: string, channelId: string, price: number) =>
     api.put<PriceUpdateResult>(`/prices/${encodeURIComponent(sku)}`, { channelId, price }),
+};
+
+// V2: Accounts API (Super-admin only)
+export interface GoogleSheetsColumnMapping {
+  skuColumn: string;
+  pricingMode: 'single' | 'multi';
+  priceColumn?: string;
+  channelPriceColumns?: {
+    bnq?: string;
+    amazon?: string;
+    ebay?: string;
+    manomano?: string;
+    shopify?: string;
+  };
+  startRow?: number;
+  sheetName?: string;
+}
+
+export interface Account {
+  accountId: string;
+  name: string;
+  status: 'active' | 'suspended';
+  channelEngine?: {
+    apiKey: string;
+    tenantId: string;
+  };
+  googleSheets?: {
+    spreadsheetId: string;
+    columnMapping?: GoogleSheetsColumnMapping;
+  };
+  settings: {
+    channelFees: Record<string, number>;
+    defaultMargin: number;
+    currency: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const accountsApi = {
+  list: () => api.get<{ items: Account[]; count: number }>('/accounts'),
+
+  get: (accountId: string) => api.get<Account>(`/accounts/${encodeURIComponent(accountId)}`),
+
+  create: (data: Omit<Account, 'createdAt' | 'updatedAt'>) =>
+    api.post<Account>('/accounts', data),
+
+  update: (accountId: string, data: Partial<Account>) =>
+    api.put<Account>(`/accounts/${encodeURIComponent(accountId)}`, data),
+
+  delete: (accountId: string) =>
+    api.delete(`/accounts/${encodeURIComponent(accountId)}`),
+};
+
+// V2: Users API (Super-admin only)
+export interface User {
+  userId: string;
+  email: string;
+  name: string;
+  groups: string[];
+  allowedAccounts: string[];
+  defaultAccount?: string;
+  enabled: boolean;
+  status: 'CONFIRMED' | 'FORCE_CHANGE_PASSWORD' | 'RESET_REQUIRED' | 'UNCONFIRMED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserRequest {
+  email: string;
+  name: string;
+  groups: string[];
+  allowedAccounts: string[];
+  defaultAccount?: string;
+  temporaryPassword?: string;
+}
+
+export interface UpdateUserRequest {
+  name?: string;
+  groups?: string[];
+  allowedAccounts?: string[];
+  defaultAccount?: string;
+  enabled?: boolean;
+}
+
+export const usersApi = {
+  list: () => api.get<{ items: User[]; count: number }>('/users'),
+
+  get: (userId: string) => api.get<User>(`/users/${encodeURIComponent(userId)}`),
+
+  create: (data: CreateUserRequest) => api.post<User>('/users', data),
+
+  update: (userId: string, data: UpdateUserRequest) =>
+    api.put<User>(`/users/${encodeURIComponent(userId)}`, data),
+
+  delete: (userId: string) =>
+    api.delete(`/users/${encodeURIComponent(userId)}`),
+
+  resetPassword: (userId: string) =>
+    api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/reset-password`),
 };

@@ -15,6 +15,7 @@ import {
   Bar,
 } from 'recharts';
 import { historyApi, productsApi, competitorsApi, proposalsApi, channelsApi, pricesApi, CompetitorUrl, ChannelSalesData } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import type { PriceProposal, Channel } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/Card';
 import Loading from '../components/Loading';
@@ -22,15 +23,37 @@ import ErrorMessage from '../components/ErrorMessage';
 import Badge from '../components/Badge';
 import Button from '../components/Button';
 
-// Time range options for chart
-const TIME_RANGES = [
+// Time range options for chart - 'days' can be a number or a special string for dynamic ranges
+type TimeRangeOption = { label: string; days: number | 'thisMonth' | 'lastMonth' };
+
+const TIME_RANGES: TimeRangeOption[] = [
   { label: '1W', days: 7 },
+  { label: 'This Month', days: 'thisMonth' },
+  { label: 'Last Month', days: 'lastMonth' },
   { label: '1M', days: 30 },
   { label: '3M', days: 90 },
   { label: '6M', days: 180 },
   { label: '12M', days: 365 },
   { label: '18M', days: 548 },
-] as const;
+];
+
+// Helper to calculate days for dynamic ranges
+function calculateDaysForRange(range: number | 'thisMonth' | 'lastMonth'): number {
+  if (typeof range === 'number') return range;
+
+  const now = new Date();
+  if (range === 'thisMonth') {
+    // Days from start of this month to today
+    return now.getDate();
+  } else if (range === 'lastMonth') {
+    // Days in last month + days so far this month
+    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const diffTime = firstOfThisMonth.getTime() - firstOfLastMonth.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  return 30;
+}
 
 // Channel colors for stacked bar chart - includes variations of channel names
 const CHANNEL_COLORS: Record<string, string> = {
@@ -121,6 +144,7 @@ export default function ProductDetail() {
   const { sku } = useParams<{ sku: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { accountId } = useAccountQuery();
 
   const [isEditing, setIsEditing] = useState(false);
   const [editCost, setEditCost] = useState('');
@@ -131,22 +155,25 @@ export default function ProductDetail() {
   const [newCompetitorUrl, setNewCompetitorUrl] = useState('');
   const [isAddingUrl, setIsAddingUrl] = useState(false);
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
-  const [selectedTimeRange, setSelectedTimeRange] = useState(180); // Default 6 months
+  const [selectedTimeRange, setSelectedTimeRange] = useState<number | 'thisMonth' | 'lastMonth'>(180); // Default 6 months
   const [unitPeriod, setUnitPeriod] = useState<'day' | 'week' | 'month'>('day'); // Aggregation period
+
+  // Calculate actual days for date range
+  const actualDays = calculateDaysForRange(selectedTimeRange);
 
   // Calculate date range based on selected time range
   const dateRange = useMemo(() => {
     const toDate = new Date();
     const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - selectedTimeRange);
+    fromDate.setDate(fromDate.getDate() - actualDays);
     return {
       from: fromDate.toISOString().substring(0, 10),
       to: toDate.toISOString().substring(0, 10),
     };
-  }, [selectedTimeRange]);
+  }, [actualDays]);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['history', sku, dateRange.from, dateRange.to],
+    queryKey: ['history', accountId, sku, dateRange.from, dateRange.to],
     queryFn: () => historyApi.get(sku!, dateRange.from, dateRange.to, true), // Include channel sales
     enabled: !!sku,
   });
@@ -155,14 +182,14 @@ export default function ProductDetail() {
 
   // Fetch proposals for this SKU
   const { data: proposalsData } = useQuery({
-    queryKey: ['proposals', 'by-sku', sku],
+    queryKey: ['proposals', 'by-sku', accountId, sku],
     queryFn: () => proposalsApi.list({ search: sku, pageSize: 20 }),
     enabled: !!sku,
   });
 
   // Fetch channels for per-channel pricing calculations
   const { data: channelsData } = useQuery({
-    queryKey: ['channels'],
+    queryKey: ['channels', accountId],
     queryFn: () => channelsApi.list(),
   });
 
@@ -415,13 +442,13 @@ export default function ProductDetail() {
       totalRevenue += record.dailyRevenue || 0;
     }
 
-    // Use the selected time range for calculation
-    const days = selectedTimeRange;
+    // Use the actual days for calculation
+    const days = actualDays;
     return {
       avgDailySales: days > 0 ? totalSales / days : 0,
       avgDailyRevenue: days > 0 ? totalRevenue / days : 0,
     };
-  }, [history, selectedTimeRange]);
+  }, [history, actualDays]);
 
   // Early returns must come AFTER all hooks
   if (isLoading) {
@@ -979,6 +1006,14 @@ export default function ProductDetail() {
                     <YAxis yAxisId="left" tick={{ fontSize: 11 }} width={50} />
                     <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} width={50} />
                     <Tooltip
+                      wrapperStyle={{ zIndex: 1000 }}
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                        opacity: 1,
+                      }}
                       labelFormatter={(label) => {
                         const date = new Date(label);
                         if (unitPeriod === 'week') {
@@ -1101,6 +1136,14 @@ export default function ProductDetail() {
                         <YAxis yAxisId="left" tick={{ fontSize: 11 }} width={50} />
                         <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} width={50} tickFormatter={() => ''} />
                         <Tooltip
+                          wrapperStyle={{ zIndex: 1000 }}
+                          contentStyle={{
+                            backgroundColor: '#ffffff',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '8px',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                            opacity: 1,
+                          }}
                           labelFormatter={(label) => {
                             const date = new Date(label);
                             if (unitPeriod === 'week') {

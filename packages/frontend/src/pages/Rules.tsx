@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit2, Trash2, Save, Settings, GripVertical } from 'lucide-react';
 import { rulesApi } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import type { PricingRule, PricingRuleAction } from '../types';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -29,11 +30,12 @@ const emptyRule: Omit<PricingRule, 'ruleId' | 'createdAt' | 'updatedAt'> = {
 
 export default function Rules() {
   const queryClient = useQueryClient();
+  const { accountId } = useAccountQuery();
   const [editingRule, setEditingRule] = useState<Partial<PricingRule> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['rules'],
+    queryKey: ['rules', accountId],
     queryFn: rulesApi.list,
   });
 

@@ -371,9 +371,63 @@ async function handleProposals(event: APIGatewayProxyEvent): Promise<APIGatewayP
     return response(200, { results });
   }
 
+  // Bulk approve all filtered proposals
+  if (path.endsWith('/bulk-approve-filtered') && method === 'POST') {
+    const body = JSON.parse(event.body || '{}');
+    const { reviewedBy, notes, filters: filterParams } = body;
+
+    // Build filters - always filter for pending status
+    const filters = {
+      status: 'pending' as ProposalStatus,
+      batchId: filterParams?.batchId,
+      brand: filterParams?.brand,
+      searchTerm: filterParams?.search,
+      hasWarnings: filterParams?.hasWarnings === true,
+      appliedRuleName: filterParams?.appliedRuleName,
+    };
+
+    // Get all matching proposals (fetch all pages)
+    const result = await db.queryProposals(filters, 1, 10000); // Large page size to get all
+    const allProposals = result.items;
+
+    // Approve all pending proposals
+    let approvedCount = 0;
+    for (const proposal of allProposals) {
+      if (proposal.status === 'pending') {
+        await db.updateProposalStatus(proposal.proposalId, 'approved', reviewedBy || 'user', notes);
+        approvedCount++;
+      }
+    }
+
+    return response(200, {
+      success: true,
+      approvedCount,
+      message: `Approved ${approvedCount} proposals`
+    });
+  }
+
   // Push approved prices to ChannelEngine
   if (path.endsWith('/push') && method === 'POST') {
     return handlePushPrices(event);
+  }
+
+  // Get status counts for all proposals
+  if (path.endsWith('/status-counts') && method === 'GET') {
+    const [pending, approved, modified, rejected, pushed] = await Promise.all([
+      db.getProposalsByStatus('pending'),
+      db.getProposalsByStatus('approved'),
+      db.getProposalsByStatus('modified'),
+      db.getProposalsByStatus('rejected'),
+      db.getProposalsByStatus('pushed'),
+    ]);
+    return response(200, {
+      pending: pending.length,
+      approved: approved.length,
+      modified: modified.length,
+      rejected: rejected.length,
+      pushed: pushed.length,
+      totalApproved: approved.length + modified.length,
+    });
   }
 
   if (method === 'GET' && !proposalId) {
@@ -476,8 +530,8 @@ async function handlePushPrices(event: APIGatewayProxyEvent): Promise<APIGateway
   }
 
   try {
-    const { createGoogleSheetsService } = await import('@repricing/core');
-    const gsService = await createGoogleSheetsService(gsSecretArn, false); // false = write access
+    const { createGoogleSheetsServiceFromSecret } = await import('@repricing/core');
+    const gsService = await createGoogleSheetsServiceFromSecret(gsSecretArn, false); // false = write access
     const result = await gsService.updatePrices(updates);
 
     console.log(`Google Sheets updated: ${result.updated} SKUs, ${result.notFound.length} not found`);
@@ -681,6 +735,7 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
   if (path.endsWith('/sales')) {
     const days = parseInt(params.days || '30', 10);
     const includeDaily = params.includeDaily === 'true';
+    const includePreviousYear = params.includePreviousYear === 'true';
 
     // Single scan to get all order lines in date range
     const today = new Date();
@@ -690,6 +745,20 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
     const toDateStr = today.toISOString().substring(0, 10);
 
     const orderLines = await db.getOrderLinesByDateRange(fromDateStr, toDateStr);
+
+    // Also fetch previous year data if requested
+    let previousYearOrderLines: typeof orderLines = [];
+    let previousYearFromDateStr = '';
+    let previousYearToDateStr = '';
+    if (includePreviousYear) {
+      const previousYearFromDate = new Date(fromDate);
+      previousYearFromDate.setFullYear(previousYearFromDate.getFullYear() - 1);
+      const previousYearToDate = new Date(today);
+      previousYearToDate.setFullYear(previousYearToDate.getFullYear() - 1);
+      previousYearFromDateStr = previousYearFromDate.toISOString().substring(0, 10);
+      previousYearToDateStr = previousYearToDate.toISOString().substring(0, 10);
+      previousYearOrderLines = await db.getOrderLinesByDateRange(previousYearFromDateStr, previousYearToDateStr);
+    }
 
     // Aggregate by SKU, channel, and optionally by day
     const salesBySku: Record<string, { quantity: number; revenue: number }> = {};
@@ -756,6 +825,56 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
       totalOrders += channelData.orders;
     }
 
+    // Process previous year data if requested
+    let previousYearDailySales: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+    let previousYearTotals: { quantity: number; revenue: number; orders: number } | undefined;
+    if (includePreviousYear && previousYearOrderLines.length > 0) {
+      previousYearDailySales = {};
+      const pyOrderIdsByDate: Record<string, Set<string>> = {};
+      let pyTotalQuantity = 0;
+      let pyTotalRevenue = 0;
+      let pyTotalOrders = 0;
+      const pyAllOrderIds = new Set<string>();
+
+      for (const line of previousYearOrderLines) {
+        const dateDay = line.orderDateDay || '';
+        const orderId = line.orderId || '';
+
+        // Shift date forward by 1 year to align with current year
+        if (dateDay) {
+          const [year, month, day] = dateDay.split('-').map(Number);
+          const shiftedDate = `${year + 1}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+          if (!previousYearDailySales[shiftedDate]) {
+            previousYearDailySales[shiftedDate] = { quantity: 0, revenue: 0, orders: 0 };
+            pyOrderIdsByDate[shiftedDate] = new Set();
+          }
+
+          previousYearDailySales[shiftedDate].quantity += line.quantity || 0;
+          previousYearDailySales[shiftedDate].revenue += line.lineTotalInclVat || 0;
+
+          if (!pyOrderIdsByDate[shiftedDate].has(orderId)) {
+            pyOrderIdsByDate[shiftedDate].add(orderId);
+            previousYearDailySales[shiftedDate].orders++;
+          }
+        }
+
+        // Previous year totals
+        pyTotalQuantity += line.quantity || 0;
+        pyTotalRevenue += line.lineTotalInclVat || 0;
+        if (!pyAllOrderIds.has(orderId)) {
+          pyAllOrderIds.add(orderId);
+          pyTotalOrders++;
+        }
+      }
+
+      previousYearTotals = {
+        quantity: pyTotalQuantity,
+        revenue: Math.round(pyTotalRevenue * 100) / 100,
+        orders: pyTotalOrders,
+      };
+    }
+
     const result: Record<string, unknown> = {
       days,
       fromDate: fromDateStr,
@@ -773,6 +892,15 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
 
     if (includeDaily) {
       result.dailySales = dailySales;
+    }
+
+    if (includePreviousYear) {
+      result.previousYear = {
+        fromDate: previousYearFromDateStr,
+        toDate: previousYearToDateStr,
+        dailySales: previousYearDailySales || {},
+        totals: previousYearTotals || { quantity: 0, revenue: 0, orders: 0 },
+      };
     }
 
     return response(200, result);
@@ -2114,8 +2242,8 @@ async function handlePrices(event: APIGatewayProxyEvent): Promise<APIGatewayProx
     }
 
     try {
-      const { createGoogleSheetsService } = await import('@repricing/core');
-      const gsService = await createGoogleSheetsService(gsSecretArn, false); // false = write access
+      const { createGoogleSheetsServiceFromSecret } = await import('@repricing/core');
+      const gsService = await createGoogleSheetsServiceFromSecret(gsSecretArn, false); // false = write access
       const result = await gsService.updateChannelPrice(sku, channelId, price);
 
       if (!result.success) {

@@ -19,6 +19,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { proposalsApi, rulesApi, type ProposalFilters } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import type { PriceProposal, ProposalStatus } from '../types';
 import { Card, CardContent } from '../components/Card';
 import Loading from '../components/Loading';
@@ -169,6 +170,7 @@ function ModifyPriceModal({
 
 export default function Proposals() {
   const queryClient = useQueryClient();
+  const { accountId } = useAccountQuery();
   const [filters, setFilters] = useState<ProposalFilters>({
     status: undefined,
     page: 1,
@@ -180,13 +182,19 @@ export default function Proposals() {
 
   // Fetch proposals
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['proposals', filters],
+    queryKey: ['proposals', accountId, filters],
     queryFn: () => proposalsApi.list({ ...filters, search: searchTerm || undefined }),
+  });
+
+  // Fetch status counts (total across all pages)
+  const { data: statusCounts } = useQuery({
+    queryKey: ['proposal-status-counts', accountId],
+    queryFn: () => proposalsApi.statusCounts(),
   });
 
   // Fetch rules for the reason filter dropdown
   const { data: rulesData } = useQuery({
-    queryKey: ['rules'],
+    queryKey: ['rules', accountId],
     queryFn: () => rulesApi.list(),
   });
 
@@ -196,6 +204,7 @@ export default function Proposals() {
       proposalsApi.approve(id, 'user', notes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
     },
     onError: (error) => {
       console.error('Approve failed:', error);
@@ -208,6 +217,7 @@ export default function Proposals() {
       proposalsApi.reject(id, 'user', notes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
     },
     onError: (error) => {
       console.error('Reject failed:', error);
@@ -220,6 +230,7 @@ export default function Proposals() {
       proposalsApi.modify(id, price, 'user', notes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
       setModifyingProposal(null);
     },
   });
@@ -228,6 +239,7 @@ export default function Proposals() {
     mutationFn: (ids: string[]) => proposalsApi.bulkApprove(ids, 'user'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
       setSelectedIds(new Set());
     },
   });
@@ -236,14 +248,41 @@ export default function Proposals() {
     mutationFn: (ids: string[]) => proposalsApi.bulkReject(ids, 'user'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
       setSelectedIds(new Set());
+    },
+  });
+
+  const bulkApproveFilteredMutation = useMutation({
+    mutationFn: () => {
+      const filterParams = {
+        status: filters.status,
+        appliedRuleName: filters.appliedRuleName,
+        search: searchTerm || undefined,
+      };
+      return proposalsApi.bulkApproveFiltered(filterParams, 'user');
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
+      alert(`Successfully approved ${data.approvedCount} proposals`);
+    },
+    onError: (error) => {
+      console.error('Bulk approve filtered failed:', error);
+      alert(`Failed to approve: ${error instanceof Error ? error.message : 'Unknown error'}`);
     },
   });
 
   const pushMutation = useMutation({
     mutationFn: () => proposalsApi.push(false),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['proposals'] });
+      queryClient.invalidateQueries({ queryKey: ['proposal-status-counts'] });
+      alert(`Successfully pushed ${data.pushed} price changes to Google Sheets`);
+    },
+    onError: (error) => {
+      console.error('Push failed:', error);
+      alert(`Failed to push: ${error instanceof Error ? error.message : 'Unknown error'}`);
     },
   });
 
@@ -251,9 +290,11 @@ export default function Proposals() {
   const totalCount = data?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // Calculate summary stats from current data
-  const pendingCount = proposals.filter((p) => p.status === 'pending').length;
-  const approvedCount = proposals.filter((p) => p.status === 'approved' || p.status === 'modified').length;
+  // Use status counts from API for accurate totals
+  const pendingCount = statusCounts?.pending || 0;
+  const approvedCount = statusCounts?.totalApproved || 0;
+  const rejectedCount = statusCounts?.rejected || 0;
+  const pushedCount = statusCounts?.pushed || 0;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -333,9 +374,7 @@ export default function Proposals() {
           onClick={() => setFilters((prev) => ({ ...prev, status: prev.status === 'rejected' ? undefined : 'rejected', page: 1 }))}
         >
           <CardContent className="py-3">
-            <p className="text-2xl font-bold text-red-600">
-              {proposals.filter((p) => p.status === 'rejected').length}
-            </p>
+            <p className="text-2xl font-bold text-red-600">{rejectedCount}</p>
             <p className="text-xs text-gray-500">Rejected</p>
           </CardContent>
         </Card>
@@ -344,15 +383,13 @@ export default function Proposals() {
           onClick={() => setFilters((prev) => ({ ...prev, status: prev.status === 'pushed' ? undefined : 'pushed', page: 1 }))}
         >
           <CardContent className="py-3">
-            <p className="text-2xl font-bold text-purple-600">
-              {proposals.filter((p) => p.status === 'pushed').length}
-            </p>
+            <p className="text-2xl font-bold text-purple-600">{pushedCount}</p>
             <p className="text-xs text-gray-500">Pushed</p>
           </CardContent>
         </Card>
         <Card className="bg-gray-50">
           <CardContent className="py-3">
-            <p className="text-2xl font-bold text-gray-700">{totalCount}</p>
+            <p className="text-2xl font-bold text-gray-700">{pendingCount + approvedCount + rejectedCount + pushedCount}</p>
             <p className="text-xs text-gray-500">Total</p>
           </CardContent>
         </Card>
@@ -408,6 +445,7 @@ export default function Proposals() {
             className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Reasons</option>
+            <option value="__NO_RULE__">No Rule Applied</option>
             {rulesData?.items?.map((rule) => (
               <option key={rule.ruleId} value={rule.name}>
                 {rule.name}
@@ -423,6 +461,27 @@ export default function Proposals() {
           <RefreshCw className="h-4 w-4" />
           Refresh
         </button>
+
+        {/* Approve All Filtered button - shows when there are pending proposals and filters are applied */}
+        {pendingCount > 0 && (filters.status === 'pending' || filters.appliedRuleName || searchTerm) && (
+          <button
+            onClick={() => {
+              const filterDesc = [
+                filters.appliedRuleName === '__NO_RULE__' ? 'No Rule Applied' : filters.appliedRuleName,
+                searchTerm ? `search "${searchTerm}"` : null,
+              ].filter(Boolean).join(', ');
+
+              if (confirm(`Are you sure you want to approve ALL pending proposals${filterDesc ? ` matching: ${filterDesc}` : ''}?\n\nThis may approve more than ${PAGE_SIZE} proposals.`)) {
+                bulkApproveFilteredMutation.mutate();
+              }
+            }}
+            disabled={bulkApproveFilteredMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            <Check className="h-4 w-4" />
+            {bulkApproveFilteredMutation.isPending ? 'Approving...' : 'Approve All Filtered'}
+          </button>
+        )}
       </div>
 
       {/* Bulk Actions */}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { productsApi, analyticsApi } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import type { Product } from '../types';
 import { Card, CardContent } from '../components/Card';
 import Badge from '../components/Badge';
@@ -39,6 +40,7 @@ const renderSortIcon = (field: SortField, sortField: SortField, sortDirection: S
 export default function Products() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { accountId } = useAccountQuery();
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editCost, setEditCost] = useState('');
@@ -52,12 +54,12 @@ export default function Products() {
   const [pageSize, setPageSize] = useState(50);
 
   const { data, isLoading: productsLoading, error, refetch } = useQuery({
-    queryKey: ['products'],
+    queryKey: ['products', accountId],
     queryFn: productsApi.list,
   });
 
   const { data: salesData, isLoading: salesLoading } = useQuery({
-    queryKey: ['sales', 180],
+    queryKey: ['sales', accountId, 180],
     queryFn: () => analyticsApi.sales(180),
   });
 

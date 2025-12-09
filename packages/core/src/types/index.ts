@@ -7,3 +7,4 @@ export * from './order';
 export * from './carrier';
 export * from './sku-history';
 export * from './competitor';
+export * from './account';

@@ -9,6 +9,7 @@ import {
   PackageX,
 } from 'lucide-react';
 import { analyticsApi, proposalsApi } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import StatCard from '../components/StatCard';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -17,13 +18,15 @@ import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
 
 export default function Dashboard() {
+  const { accountId } = useAccountQuery();
+
   const {
     data: summary,
     isLoading: summaryLoading,
     error: summaryError,
     refetch: refetchSummary,
   } = useQuery({
-    queryKey: ['analytics', 'summary'],
+    queryKey: ['analytics', 'summary', accountId],
     queryFn: analyticsApi.summary,
   });
 
@@ -31,7 +34,7 @@ export default function Dashboard() {
     data: pendingProposals,
     isLoading: proposalsLoading,
   } = useQuery({
-    queryKey: ['proposals', 'pending'],
+    queryKey: ['proposals', 'pending', accountId],
     queryFn: () => proposalsApi.list({ status: 'pending', pageSize: 5 }),
   });
 

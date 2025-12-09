@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Truck, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { carriersApi } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import type { CarrierCost, RecalculateResult } from '../api';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -12,6 +13,7 @@ import ErrorMessage from '../components/ErrorMessage';
 
 export default function DeliveryCosts() {
   const queryClient = useQueryClient();
+  const { accountId } = useAccountQuery();
   const [editingCarrier, setEditingCarrier] = useState<CarrierCost | null>(null);
   const [formData, setFormData] = useState<Partial<CarrierCost>>({});
   const [showAddForm, setShowAddForm] = useState(false);
@@ -19,7 +21,7 @@ export default function DeliveryCosts() {
   const [recalculateResult, setRecalculateResult] = useState<RecalculateResult | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['carriers'],
+    queryKey: ['carriers', accountId],
     queryFn: carriersApi.list,
   });
 

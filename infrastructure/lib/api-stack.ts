@@ -74,6 +74,12 @@ export class ApiStack extends cdk.Stack {
     const bulkReject = proposals.addResource('bulk-reject');
     bulkReject.addMethod('POST', lambdaIntegration, protectedMethodOptions);
 
+    const bulkApproveFiltered = proposals.addResource('bulk-approve-filtered');
+    bulkApproveFiltered.addMethod('POST', lambdaIntegration, protectedMethodOptions);
+
+    const statusCounts = proposals.addResource('status-counts');
+    statusCounts.addMethod('GET', lambdaIntegration, protectedMethodOptions);
+
     // Push approved prices to ChannelEngine - Admin only (enforced in Lambda)
     const pushPrices = proposals.addResource('push');
     pushPrices.addMethod('POST', lambdaIntegration, protectedMethodOptions);

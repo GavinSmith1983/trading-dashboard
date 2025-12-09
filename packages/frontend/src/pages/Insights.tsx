@@ -16,6 +16,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { analyticsApi, proposalsApi, type InsightCategory, type InsightProduct } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
@@ -116,8 +117,15 @@ function InsightCard({
               <p className="text-sm text-gray-600 mt-1">{insight.description}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className={`text-2xl font-bold ${colors.text}`}>{insight.count}</span>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <span className={`text-2xl font-bold ${colors.text}`}>{insight.count}</span>
+              {insight.dailyRevenueImpact !== undefined && insight.dailyRevenueImpact > 0 && (
+                <p className={`text-sm font-medium ${colors.text}`}>
+                  £{insight.dailyRevenueImpact.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/day at risk
+                </p>
+              )}
+            </div>
             <button
               onClick={onToggle}
               className="p-1 hover:bg-white/50 rounded-lg transition-colors"
@@ -265,15 +273,16 @@ function ProductRow({ product }: { product: InsightProduct }) {
 }
 
 export default function Insights() {
+  const { accountId } = useAccountQuery();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['insights'],
+    queryKey: ['insights', accountId],
     queryFn: () => analyticsApi.insights(),
   });
 
   const { data: proposalsData } = useQuery({
-    queryKey: ['proposals', { status: 'pending' }],
+    queryKey: ['proposals', accountId, { status: 'pending' }],
     queryFn: () => proposalsApi.list({ status: 'pending', pageSize: 1 }),
   });
 

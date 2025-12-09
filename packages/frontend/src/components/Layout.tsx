@@ -15,9 +15,13 @@ import {
   User,
   ChevronLeft,
   ChevronRight,
+  Building2,
+  Users,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../context/AuthContext';
+import { useAccount } from '../context/AccountContext';
+import AccountSwitcher from './AccountSwitcher';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -31,8 +35,15 @@ const navItems = [
   { to: '/import', label: 'Import', icon: Upload },
 ];
 
+// Admin-only navigation items (super-admin)
+const adminNavItems = [
+  { to: '/admin/accounts', label: 'Accounts', icon: Building2 },
+  { to: '/admin/users', label: 'Users', icon: Users },
+];
+
 export default function Layout() {
   const { user, logout, isAdmin, isEditor } = useAuth();
+  const { isSuperAdmin } = useAccount();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -48,6 +59,9 @@ export default function Layout() {
     }
     return true;
   });
+
+  // Admin nav items only visible to super-admins
+  const visibleAdminItems = isSuperAdmin ? adminNavItems : [];
 
   return (
     <div className="min-h-screen flex">
@@ -75,8 +89,15 @@ export default function Layout() {
           </div>
         </div>
 
+        {/* Account Switcher (V2) */}
+        {!isCollapsed && (
+          <div className="px-2 py-2 border-b border-gray-800">
+            <AccountSwitcher />
+          </div>
+        )}
+
         {/* Navigation */}
-        <nav className="flex-1 p-2">
+        <nav className="flex-1 p-2 overflow-y-auto">
           <ul className="space-y-1">
             {visibleNavItems.map((item) => (
               <li key={item.to}>
@@ -99,6 +120,41 @@ export default function Layout() {
               </li>
             ))}
           </ul>
+
+          {/* Admin Section (Super-Admin Only) */}
+          {visibleAdminItems.length > 0 && (
+            <>
+              {!isCollapsed && (
+                <div className="mt-4 pt-4 border-t border-gray-800">
+                  <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Administration
+                  </p>
+                </div>
+              )}
+              <ul className="space-y-1 mt-2">
+                {visibleAdminItems.map((item) => (
+                  <li key={item.to}>
+                    <NavLink
+                      to={item.to}
+                      title={isCollapsed ? item.label : undefined}
+                      className={({ isActive }) =>
+                        clsx(
+                          'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
+                          isActive
+                            ? 'bg-purple-900 text-white'
+                            : 'text-gray-400 hover:bg-gray-800 hover:text-white',
+                          isCollapsed && 'justify-center'
+                        )
+                      }
+                    >
+                      <item.icon className="h-5 w-5 flex-shrink-0" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </nav>
 
         {/* User Info & Logout */}
@@ -141,7 +197,7 @@ export default function Layout() {
         {!isCollapsed && (
           <div className="p-4 border-t border-gray-800 text-xs text-gray-500">
             <p>Bathroom Products</p>
-            <p>Trading Dashboard v1.0</p>
+            <p>Trading Dashboard v2.0</p>
           </div>
         )}
       </aside>

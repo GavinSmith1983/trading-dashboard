@@ -1,6 +1,6 @@
 import { ScheduledEvent, Context } from 'aws-lambda';
 import {
-  createGoogleSheetsService,
+  createGoogleSheetsServiceFromSecret,
   createChannelEngineService,
   createDynamoDBService,
   Product,
@@ -165,7 +165,7 @@ async function fetchFromGoogleSheets(): Promise<Map<string, GoogleSheetProduct>>
 
   try {
     console.log('[SHEETS] Initializing Google Sheets service...');
-    const sheetsService = await createGoogleSheetsService(secretArn);
+    const sheetsService = await createGoogleSheetsServiceFromSecret(secretArn);
 
     // Try to get available sheet names
     let sheetNames: string[] = [];

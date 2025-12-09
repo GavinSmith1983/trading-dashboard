@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Store } from 'lucide-react';
 import { channelsApi } from '../api';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import type { Channel } from '../types';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -11,11 +12,12 @@ import ErrorMessage from '../components/ErrorMessage';
 
 export default function Channels() {
   const queryClient = useQueryClient();
+  const { accountId } = useAccountQuery();
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [formData, setFormData] = useState<Partial<Channel>>({});
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['channels'],
+    queryKey: ['channels', accountId],
     queryFn: channelsApi.list,
   });
 

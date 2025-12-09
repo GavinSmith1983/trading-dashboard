@@ -76,6 +76,19 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Fetch raw data from a range - returns 2D array of cell values
+   * Used for flexible column mapping
+   */
+  async fetchRawData(range: string): Promise<string[][]> {
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range,
+    });
+
+    return (response.data.values as string[][]) || [];
+  }
+
+  /**
    * Update prices for multiple SKUs in the sheet
    * Updates all channel price columns (B&Q, Amazon, eBay, ManoMano, Shopify) to the same price
    */
@@ -214,7 +227,7 @@ export class GoogleSheetsService {
  * @param secretArn - ARN of the secret containing Google credentials
  * @param readOnly - Whether to use read-only access (default: true)
  */
-export async function createGoogleSheetsService(
+export async function createGoogleSheetsServiceFromSecret(
   secretArn: string,
   readOnly: boolean = true
 ): Promise<GoogleSheetsService> {
@@ -236,4 +249,19 @@ export async function createGoogleSheetsService(
   const credentials = JSON.parse(secret.credentials);
 
   return new GoogleSheetsService(credentials, secret.spreadsheetId, readOnly);
+}
+
+/**
+ * Factory function to create GoogleSheetsService from credentials string
+ * @param credentials - JSON string of Google service account credentials
+ * @param spreadsheetId - Google Sheets spreadsheet ID
+ * @param readOnly - Whether to use read-only access (default: true)
+ */
+export function createGoogleSheetsService(
+  credentials: string,
+  spreadsheetId: string,
+  readOnly: boolean = true
+): GoogleSheetsService {
+  const credentialsObj = JSON.parse(credentials);
+  return new GoogleSheetsService(credentialsObj, spreadsheetId, readOnly);
 }

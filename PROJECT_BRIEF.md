@@ -9,13 +9,19 @@ An automated repricing system for bathroom products sold across multiple sales c
 ## Business Context
 
 - **Company:** Bathroom products retailer (brands include Nuie, Balterley)
-- **Product Catalog:** 6,200+ SKUs
+- **Product Catalog:** 6,200+ SKUs (KU Bathrooms), multiple accounts supported
 - **Sales Channels:** Amazon, B&Q, eBay, ManoMano, Shopify (all managed via ChannelEngine)
 - **Repricing Frequency:** Weekly cycle
 - **Pricing Strategy:** Start with unified pricing across channels, evolve to channel-specific optimization later
+- **Multi-Tenant:** V2 supports multiple accounts (KU Bathrooms, Valquest, Clearance)
 
 ## Live URLs
 
+### V2 (Multi-Tenant - Current)
+- **Frontend:** https://d1stq5bxiu9ds3.cloudfront.net
+- **API:** https://lvsj0zgfz2.execute-api.eu-west-2.amazonaws.com/prod/
+
+### V1 (Legacy - Single Tenant)
 - **Frontend:** https://dd0eswlutoz5b.cloudfront.net
 - **API:** https://2uf6pmvya1.execute-api.eu-west-2.amazonaws.com/prod/
 
@@ -144,7 +150,18 @@ channel-engine-repricing/
 
 ## Implementation Status
 
-### Completed
+### V2 Multi-Tenant (December 2025)
+- Multi-account architecture with account switcher
+- Super-admin role for managing accounts and users
+- Per-account data isolation (all tables use accountId partition key)
+- Account context extraction from JWT tokens
+- Admin UI for account and user management
+- KU Bathrooms and Valquest accounts operational
+- Order sync with tenant-specific ChannelEngine URLs
+- React Query cache invalidation on account switch
+- Insights page with daily revenue impact on stock insights
+
+### V1 Features (Completed)
 - AWS CDK infrastructure (all stacks deployed)
 - Data sync from ChannelEngine (6,200+ products with images, weight)
 - Data sync from Google Sheets (cost data)
@@ -180,6 +197,7 @@ Seven insight cards to identify product health issues:
 - Sorted by severity (critical first)
 - Links to product detail page
 - Summary counts for critical/warning issues
+- **Daily Revenue Impact** - Stock insights (Danger Stock, OOS) show total £/day at risk
 
 ### Delivery Cost Calculation
 Delivery costs are calculated from real order data:
@@ -408,9 +426,19 @@ aws dynamodb scan --table-name repricing-orders --select COUNT
 
 ---
 
-*Last updated: 3rd December 2025*
+*Last updated: 9th December 2025*
 
-**Recent Changes:**
+**Recent Changes (V2):**
+- V2 multi-tenant architecture deployed and operational
+- Account switcher for switching between KU Bathrooms, Valquest, Clearance
+- Super-admin role for managing accounts and users
+- Per-account data isolation with accountId partition keys
+- Order sync fixed to use tenant-specific ChannelEngine URLs
+- React Query cache invalidation on account switch
+- Insights page shows daily revenue impact for stock issues
+- Valquest orders backfilled from May 2025
+
+**Previous Changes (V1):**
 - Products page: Added filters (stock, missing cost, margin) and pagination
 - Google Sheet integration simplified: Only Column C (SKU) and F-J (prices) are read
 - Brand data now sourced from ChannelEngine only (not Google Sheet)

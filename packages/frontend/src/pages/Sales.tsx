@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShoppingCart, PoundSterling, TrendingUp, Package } from 'lucide-react';
+import { useAccountQuery } from '../hooks/useAccountQuery';
 import {
   ComposedChart,
   Line,
@@ -17,15 +18,37 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/Card';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
 
-// Time range options
-const TIME_RANGES = [
+// Time range options - 'days' can be a number or a special string for dynamic ranges
+type TimeRangeOption = { label: string; days: number | 'thisMonth' | 'lastMonth' };
+
+const TIME_RANGES: TimeRangeOption[] = [
   { label: '1W', days: 7 },
+  { label: 'This Month', days: 'thisMonth' },
+  { label: 'Last Month', days: 'lastMonth' },
   { label: '1M', days: 30 },
   { label: '3M', days: 90 },
   { label: '6M', days: 180 },
   { label: '12M', days: 365 },
   { label: '18M', days: 548 },
-] as const;
+];
+
+// Helper to calculate days for dynamic ranges
+function calculateDaysForRange(range: number | 'thisMonth' | 'lastMonth'): number {
+  if (typeof range === 'number') return range;
+
+  const now = new Date();
+  if (range === 'thisMonth') {
+    // Days from start of this month to today
+    return now.getDate();
+  } else if (range === 'lastMonth') {
+    // Days in last month + days so far this month
+    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const diffTime = firstOfThisMonth.getTime() - firstOfLastMonth.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+  return 30;
+}
 
 // Channel colors
 const CHANNEL_COLORS: Record<string, string> = {
@@ -56,14 +79,19 @@ const getChannelColor = (channel: string, index: number): string => {
 };
 
 export default function Sales() {
-  const [selectedTimeRange, setSelectedTimeRange] = useState(30); // Default 1 month
+  const { accountId } = useAccountQuery();
+  const [selectedTimeRange, setSelectedTimeRange] = useState<number | 'thisMonth' | 'lastMonth'>(30); // Default 1 month
   const [unitPeriod, setUnitPeriod] = useState<'day' | 'week' | 'month'>('day');
   const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'units' | 'revenue'>('revenue');
+  const [showPreviousYear, setShowPreviousYear] = useState(false);
+
+  // Calculate actual days for API call
+  const actualDays = calculateDaysForRange(selectedTimeRange);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['sales', selectedTimeRange],
-    queryFn: () => analyticsApi.sales(selectedTimeRange, true), // includeDaily=true
+    queryKey: ['sales', accountId, selectedTimeRange, showPreviousYear],
+    queryFn: () => analyticsApi.sales(actualDays, true, showPreviousYear), // includeDaily=true
   });
 
   // Get date range from response
@@ -92,6 +120,7 @@ export default function Sales() {
     }
 
     const channels = data.channels || [];
+    const previousYearDailySales = data.previousYear?.dailySales || {};
 
     return allDates.map(date => {
       const daySales = data.dailySales![date] || {};
@@ -112,9 +141,19 @@ export default function Sales() {
       entry.totalRevenue = Math.round(dayTotal * 100) / 100;
       entry.totalUnits = dayUnits;
 
+      // Add previous year data if available (dates are already shifted to align)
+      if (showPreviousYear && previousYearDailySales[date]) {
+        const pyData = previousYearDailySales[date];
+        entry.previousYearRevenue = Math.round(pyData.revenue * 100) / 100;
+        entry.previousYearUnits = pyData.quantity;
+      } else if (showPreviousYear) {
+        entry.previousYearRevenue = null;
+        entry.previousYearUnits = null;
+      }
+
       return entry;
     });
-  }, [data]);
+  }, [data, showPreviousYear]);
 
   // Aggregate by week or month if selected
   const aggregatedChartData = useMemo(() => {
@@ -163,9 +202,17 @@ export default function Sales() {
         aggregated.totalRevenue = Math.round(totalRevenue * 100) / 100;
         aggregated.totalUnits = totalUnits;
 
+        // Aggregate previous year data
+        if (showPreviousYear) {
+          const pyRevenueSum = points.reduce((sum, p) => sum + (p.previousYearRevenue || 0), 0);
+          const pyUnitsSum = points.reduce((sum, p) => sum + (p.previousYearUnits || 0), 0);
+          aggregated.previousYearRevenue = pyRevenueSum > 0 ? Math.round(pyRevenueSum * 100) / 100 : null;
+          aggregated.previousYearUnits = pyUnitsSum > 0 ? pyUnitsSum : null;
+        }
+
         return aggregated;
       });
-  }, [chartData, unitPeriod, data?.channels]);
+  }, [chartData, unitPeriod, data?.channels, showPreviousYear]);
 
   const toggleChannel = (channel: string) => {
     setHiddenChannels(prev => {
@@ -203,7 +250,7 @@ export default function Sales() {
   const totalsByChannel = data?.totalsByChannel || {};
 
   // Calculate averages
-  const daysInRange = data?.days || selectedTimeRange;
+  const daysInRange = data?.days || actualDays;
   const avgDailyRevenue = daysInRange > 0 ? totals.revenue / daysInRange : 0;
   const avgDailyUnits = daysInRange > 0 ? totals.quantity / daysInRange : 0;
   const avgDailyOrders = daysInRange > 0 ? totals.orders / daysInRange : 0;
@@ -274,6 +321,17 @@ export default function Sales() {
               </button>
             ))}
           </div>
+          {/* Previous Year Toggle */}
+          <button
+            onClick={() => setShowPreviousYear(!showPreviousYear)}
+            className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+              showPreviousYear
+                ? 'bg-purple-100 text-purple-700 font-medium'
+                : 'bg-gray-100 text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            vs Last Year
+          </button>
         </div>
       </div>
 
@@ -378,6 +436,14 @@ export default function Sales() {
                   }
                 />
                 <Tooltip
+                  wrapperStyle={{ zIndex: 1000 }}
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                    opacity: 1,
+                  }}
                   labelFormatter={(label) => {
                     const date = new Date(label);
                     if (unitPeriod === 'week') {
@@ -396,8 +462,12 @@ export default function Sales() {
                     });
                   }}
                   formatter={(value: number, name: string) => {
+                    if (value === null || value === undefined) return ['-', name];
+                    if (name === 'Last Year') {
+                      return [viewMode === 'revenue' ? `£${value.toLocaleString()}` : value, 'Last Year'];
+                    }
                     const channelName = name.replace(/^(units_|revenue_)/, '');
-                    if (name.startsWith('revenue_')) {
+                    if (name.startsWith('revenue_') || name === 'Total') {
                       return [`£${value.toLocaleString()}`, channelName];
                     }
                     return [value, channelName];
@@ -426,6 +496,19 @@ export default function Sales() {
                   name="Total"
                   hide={hiddenChannels.has(viewMode === 'revenue' ? 'totalRevenue' : 'totalUnits')}
                 />
+                {/* Previous year line */}
+                {showPreviousYear && (
+                  <Line
+                    type="monotone"
+                    dataKey={viewMode === 'revenue' ? 'previousYearRevenue' : 'previousYearUnits'}
+                    stroke="#9333ea"
+                    strokeWidth={2}
+                    strokeDasharray="3 3"
+                    dot={false}
+                    name="Last Year"
+                    connectNulls={false}
+                  />
+                )}
                 {/* Channel bars */}
                 {channels.map((channel, index) => {
                   const dataKey = viewMode === 'revenue' ? `revenue_${channel}` : `units_${channel}`;

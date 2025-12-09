@@ -153,7 +153,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user.groups.includes(role);
   }, [user]);
 
-  const isAdmin = user?.groups.includes('admin') || false;
+  // Check for both 'admin' (V1) and 'super-admin' (V2) groups
+  const isAdmin = user?.groups.includes('admin') || user?.groups.includes('super-admin') || false;
   const isEditor = isAdmin || user?.groups.includes('editor') || false;
 
   return (
