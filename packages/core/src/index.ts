@@ -10,3 +10,6 @@ export * from './services/competitor-scraper';
 
 // Services (V2 - Multi-tenant)
 export * from './services/dynamodb-v2';
+
+// Services (PIM)
+export * from './services/akeneo';

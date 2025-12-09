@@ -176,7 +176,21 @@ export interface SalesResponse {
     toDate: string;
     dailySales: Record<string, { quantity: number; revenue: number; orders: number }>;
     totals: { quantity: number; revenue: number; orders: number };
+    totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }>;
   };
+  previousMonth?: {
+    fromDate: string;
+    toDate: string;
+    dailySales: Record<string, { quantity: number; revenue: number; orders: number }>;
+    totals: { quantity: number; revenue: number; orders: number };
+    totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }>;
+  };
+  // Category breakdown (when includeCategories=true)
+  totalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
+  categories?: string[];
+  dailySalesByFamily?: Record<string, Record<string, { quantity: number; revenue: number }>>;
+  previousYearTotalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
+  previousMonthTotalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
 }
 
 export const analyticsApi = {
@@ -185,8 +199,8 @@ export const analyticsApi = {
   margins: () =>
     api.get<{ marginBands: Record<string, number>; total: number }>('/analytics/margins'),
 
-  sales: (days: number = 30, includeDaily: boolean = false, includePreviousYear: boolean = false) =>
-    api.get<SalesResponse>(`/analytics/sales?days=${days}${includeDaily ? '&includeDaily=true' : ''}${includePreviousYear ? '&includePreviousYear=true' : ''}`),
+  sales: (days: number = 30, includeDaily: boolean = false, includePreviousYear: boolean = false, includeCategories: boolean = false, includePreviousMonth: boolean = false) =>
+    api.get<SalesResponse>(`/analytics/sales?days=${days}${includeDaily ? '&includeDaily=true' : ''}${includePreviousYear ? '&includePreviousYear=true' : ''}${includeCategories ? '&includeCategories=true' : ''}${includePreviousMonth ? '&includePreviousMonth=true' : ''}`),
 
   insights: () => api.get<InsightsResponse>('/analytics/insights'),
 };

@@ -203,9 +203,10 @@ export class PricingEngine {
       if (!conditions.brands.includes(product.brand)) return false;
     }
 
-    // Category filter
+    // Category filter (uses family as primary, subcategory as fallback)
     if (conditions.categories && conditions.categories.length > 0) {
-      if (!product.category || !conditions.categories.includes(product.category)) return false;
+      const productCategory = product.family || product.subcategory;
+      if (!productCategory || !conditions.categories.includes(productCategory)) return false;
     }
 
     // SKU filter
@@ -463,7 +464,7 @@ export class PricingEngine {
         sku: product.sku,
         productTitle: product.title,
         brand: product.brand,
-        category: product.category,
+        category: product.family || product.subcategory,
         currentPrice: sanitize(result.currentPrice),
         proposedPrice: sanitize(result.proposedPrice),
         priceChange: sanitize(result.priceChange),

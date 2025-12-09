@@ -41,6 +41,7 @@ An automated repricing system for bathroom products sold across multiple sales c
 | Orders & Revenue | ChannelEngine | ChannelEngine Orders API |
 | Product Weight | ChannelEngine | ChannelEngine API (standard or ExtraData field) |
 | Product Costs (COGS) | Google Sheet | Google Sheets API |
+| Product Family | Akeneo PIM | Akeneo REST API (OAuth2) |
 | Delivery Costs | Calculated | From order data (Vector Summary) + category averages |
 | Channel Fees | Configuration | Set in system (Amazon 15%, eBay 12.8%, etc.) |
 | Advertising Costs | Configuration | ACOS % or fixed per channel |
@@ -87,18 +88,20 @@ An automated repricing system for bathroom products sold across multiple sales c
 │  Secrets Manager:                                               │
 │    • repricing/channel-engine (API credentials)                 │
 │    • repricing/google-sheets (service account)                  │
+│    • repricing/akeneo (PIM credentials per account)             │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Daily/Weekly Workflow
 
-1. **Daily 4am UTC:** Competitor scrape Lambda scrapes competitor prices for products with URLs configured
-2. **Daily 5am UTC:** Data sync Lambda pulls latest data from ChannelEngine and Google Sheets, records daily history
-3. **Daily 6am UTC:** Order sync Lambda pulls new orders from ChannelEngine
-4. **Monday 7am UTC:** Price calculator Lambda applies rules, generates proposals
-5. **Mon-Thu:** Human reviews proposals in approval UI
-6. **Friday:** Approved prices pushed to ChannelEngine
+1. **Every 15 mins:** Akeneo sync Lambda syncs product families (only stale/missing data)
+2. **Daily 4am UTC:** Competitor scrape Lambda scrapes competitor prices for products with URLs configured
+3. **Daily 5am UTC:** Data sync Lambda pulls latest data from ChannelEngine and Google Sheets, records daily history
+4. **Daily 6am UTC:** Order sync Lambda pulls new orders from ChannelEngine
+5. **Monday 7am UTC:** Price calculator Lambda applies rules, generates proposals
+6. **Mon-Thu:** Human reviews proposals in approval UI
+7. **Friday:** Approved prices pushed to ChannelEngine
 
 ## Profit Calculation Formula
 
@@ -160,6 +163,16 @@ channel-engine-repricing/
 - Order sync with tenant-specific ChannelEngine URLs
 - React Query cache invalidation on account switch
 - Insights page with daily revenue impact on stock insights
+- **Akeneo PIM Integration:**
+  - Background sync every 15 minutes
+  - Fetches product family/categorisation
+  - 7-day cache with smart refresh (only syncs stale/missing data)
+  - Rate limiting (10 req/s) with exponential backoff
+  - Per-account Akeneo credentials
+- **Sales Analytics Enhancements:**
+  - Revenue by Channel chart (stacked bars by day)
+  - Revenue by Family chart (same format, clickable legend)
+  - Year-over-year and month-over-month comparisons
 
 ### V1 Features (Completed)
 - AWS CDK infrastructure (all stacks deployed)
@@ -318,6 +331,10 @@ Three-section layout following merchandiser workflow:
 
 1. **repricing/channel-engine:** API key and tenant ID (configured)
 2. **repricing/google-sheets:** Service account JSON (configured)
+3. **repricing/akeneo:** Akeneo PIM credentials per account:
+   - `clientId`, `clientSecret` - OAuth2 client credentials
+   - `username`, `password` - Akeneo user credentials
+   - `baseUrl` - Akeneo instance URL (e.g., https://kubathrooms.cloud.akeneo.com)
 
 ## DynamoDB Tables
 
@@ -349,6 +366,17 @@ interface Order {
 
 ## Lambda Functions
 
+### V2 Functions
+| Function | Schedule | Timeout | Memory |
+|----------|----------|---------|--------|
+| repricing-v2-api | On-demand | 5 min | 1024 MB |
+| repricing-v2-data-sync | Daily 5am UTC | 15 min | 1024 MB |
+| repricing-v2-order-sync | Daily 6am UTC | 15 min | 1024 MB |
+| repricing-v2-akeneo-sync | Every 15 mins | 5 min | 512 MB |
+| repricing-competitor-scrape | Daily 4am UTC | 15 min | 512 MB |
+| repricing-price-calculator | Monday 7am UTC | 5 min | 512 MB |
+
+### V1 Functions (Legacy)
 | Function | Schedule | Timeout | Memory |
 |----------|----------|---------|--------|
 | repricing-competitor-scrape | Daily 4am UTC | 15 min | 512 MB |
@@ -428,7 +456,17 @@ aws dynamodb scan --table-name repricing-orders --select COUNT
 
 *Last updated: 9th December 2025*
 
-**Recent Changes (V2):**
+**Recent Changes (V2 - December 2025):**
+- **Akeneo PIM Integration:**
+  - Background sync every 15 minutes for product families
+  - Smart sync: only fetches products with no family or data > 7 days old
+  - Rate limiting (10 req/s) with exponential backoff on 429 responses
+  - OAuth2 token caching (1 hour) to minimize auth requests
+  - Per-account Akeneo credentials stored in Secrets Manager
+- **Sales Analytics Enhancements:**
+  - Revenue by Family chart with stacked bars by day (matches Channel chart)
+  - Clickable legend to show/hide individual families
+  - Daily sales breakdown by product family
 - V2 multi-tenant architecture deployed and operational
 - Account switcher for switching between KU Bathrooms, Valquest, Clearance
 - Super-admin role for managing accounts and users

@@ -32,6 +32,7 @@ export class LambdaStackV2 extends cdk.Stack {
   public readonly priceCalculatorHandler: lambda.Function;
   public readonly orderSyncHandler: lambda.Function;
   public readonly competitorScrapeHandler: lambda.Function;
+  public readonly akeneoSyncHandler: lambda.Function;
 
   constructor(scope: Construct, id: string, props: LambdaStackV2Props) {
     super(scope, id, props);
@@ -150,6 +151,31 @@ export class LambdaStackV2 extends cdk.Stack {
     });
 
     // ============================================================
+    // AKENEO SYNC HANDLER - V2
+    // Syncs product Family data from Akeneo PIM
+    // Runs every 15 mins, only syncs products with no family or stale data
+    // ============================================================
+    const akeneoSecretArn = `arn:aws:secretsmanager:${this.region}:${this.account}:secret:repricing/akeneo-zpSy5q`;
+
+    this.akeneoSyncHandler = new nodejs.NodejsFunction(this, 'AkeneoSyncHandler', {
+      functionName: 'repricing-v2-akeneo-sync',
+      entry: path.join(__dirname, '../../../packages/lambdas/akeneo-sync/src/index.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.minutes(10),
+      memorySize: 512,
+      environment: {
+        ...commonEnv,
+        AKENEO_SECRET_ARN: akeneoSecretArn,
+        AKENEO_REFRESH_DAYS: '7',
+        MAX_PRODUCTS_PER_RUN: '500',
+        REQUESTS_PER_SECOND: '10', // Conservative rate limit
+      },
+      bundling: bundlingOptions,
+      projectRoot: path.join(__dirname, '../../..'),
+    });
+
+    // ============================================================
     // PERMISSIONS - Grant all Lambdas access to tables
     // ============================================================
     const allLambdas = [
@@ -158,6 +184,7 @@ export class LambdaStackV2 extends cdk.Stack {
       this.orderSyncHandler,
       this.priceCalculatorHandler,
       this.competitorScrapeHandler,
+      this.akeneoSyncHandler,
     ];
 
     const allTables = [
@@ -259,6 +286,15 @@ export class LambdaStackV2 extends cdk.Stack {
     });
     competitorScrapeRule.addTarget(new targets.LambdaFunction(this.competitorScrapeHandler));
 
+    // Akeneo sync every 15 minutes
+    // Only syncs products with no family or family data older than 7 days
+    const akeneoSyncRule = new events.Rule(this, 'AkeneoSyncSchedule', {
+      ruleName: 'repricing-v2-akeneo-sync-15min',
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      description: 'V2: Sync product Family data from Akeneo PIM every 15 minutes',
+    });
+    akeneoSyncRule.addTarget(new targets.LambdaFunction(this.akeneoSyncHandler));
+
     // ============================================================
     // OUTPUTS
     // ============================================================
@@ -285,6 +321,11 @@ export class LambdaStackV2 extends cdk.Stack {
     new cdk.CfnOutput(this, 'CompetitorScrapeFunctionArn', {
       value: this.competitorScrapeHandler.functionArn,
       exportName: 'RepricingV2CompetitorScrapeFunctionArn',
+    });
+
+    new cdk.CfnOutput(this, 'AkeneoSyncFunctionArn', {
+      value: this.akeneoSyncHandler.functionArn,
+      exportName: 'RepricingV2AkeneoSyncFunctionArn',
     });
   }
 }

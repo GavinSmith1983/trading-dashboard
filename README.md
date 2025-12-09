@@ -24,6 +24,11 @@ The original single-tenant system is still operational for reference.
 - **Frontend:** https://dd0eswlutoz5b.cloudfront.net
 - **API:** https://2uf6pmvya1.execute-api.eu-west-2.amazonaws.com/prod/
 
+### V2 Integrations
+- **ChannelEngine:** Product catalog, stock levels, orders, and pricing
+- **Google Sheets:** Channel-specific pricing (Columns F-J mapped to channels)
+- **Akeneo PIM:** Product family/categorisation (with 7-day caching)
+
 ## Project Structure
 
 ```
@@ -39,7 +44,8 @@ Trading-Dashboard/
 │   ├── core/                # Shared types, services & business logic
 │   │   └── src/services/
 │   │       ├── dynamodb.ts      # V1 DynamoDB service
-│   │       └── dynamodb-v2.ts   # V2 multi-tenant service
+│   │       ├── dynamodb-v2.ts   # V2 multi-tenant service
+│   │       └── akeneo.ts        # Akeneo PIM integration
 │   ├── frontend/            # React dashboard UI
 │   │   └── src/
 │   │       ├── context/
@@ -53,6 +59,7 @@ Trading-Dashboard/
 │       ├── data-sync-v2/    # V2 sync (per-account)
 │       ├── order-sync/      # V1 order sync
 │       ├── order-sync-v2/   # V2 order sync (per-account)
+│       ├── akeneo-sync/     # Akeneo PIM background sync
 │       ├── price-calculator/  # Pricing proposal generation
 │       └── competitor-scrape/ # Competitor price monitoring
 └── scripts/
@@ -127,6 +134,16 @@ aws cloudfront create-invalidation --distribution-id E28VLOA0H027TB --paths "/*"
 
 ## Lambda Schedules
 
+### V2 Lambdas
+| Lambda | Schedule | Purpose |
+|--------|----------|---------|
+| data-sync-v2 | Daily 5am UTC | Sync products from ChannelEngine + Google Sheets |
+| order-sync-v2 | Daily 6am UTC | Sync orders from ChannelEngine |
+| akeneo-sync | Every 15 mins | Sync product families from Akeneo PIM |
+| price-calculator | Monday 7am UTC | Generate weekly price proposals |
+| competitor-scraper | Daily 4am UTC | Scrape competitor prices |
+
+### V1 Lambdas (Legacy)
 | Lambda | Schedule | Purpose |
 |--------|----------|---------|
 | data-sync | Daily 5am UTC | Sync products from ChannelEngine + Google Sheets |
@@ -147,8 +164,19 @@ aws cloudfront create-invalidation --distribution-id E28VLOA0H027TB --paths "/*"
 Lambda functions require these secrets in AWS Secrets Manager:
 - `repricing/channelengine` - ChannelEngine API credentials
 - `repricing/google-sheets` - Google Sheets service account + spreadsheet ID
+- `repricing/akeneo` - Akeneo PIM credentials (clientId, clientSecret, username, password, baseUrl per account)
 
 V2 accounts store credentials in the accounts DynamoDB table.
+
+## Akeneo PIM Integration
+
+The system integrates with Akeneo PIM to fetch product family/categorisation data:
+
+- **Background Sync:** Runs every 15 minutes via EventBridge
+- **Smart Sync:** Only syncs products with no family OR data older than 7 days
+- **Rate Limiting:** 10 requests/second with exponential backoff on 429 responses
+- **Token Caching:** OAuth2 tokens cached for 1 hour to minimize auth requests
+- **Batch Processing:** Max 500 products per run, respects Lambda timeout
 
 ## Documentation
 

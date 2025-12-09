@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { historyApi, productsApi, competitorsApi, proposalsApi, channelsApi, pricesApi, CompetitorUrl, ChannelSalesData } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import type { PriceProposal, Channel } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/Card';
 import Loading from '../components/Loading';
@@ -145,6 +146,10 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
+  const { currentAccount, currencySymbol } = useAccount();
+
+  // Check if this account uses single pricing mode
+  const isSinglePriceMode = currentAccount?.settings?.pricingMode === 'single';
 
   const [isEditing, setIsEditing] = useState(false);
   const [editCost, setEditCost] = useState('');
@@ -197,8 +202,8 @@ export default function ProductDetail() {
     mutationFn: (updates: { costPrice?: number; deliveryCost?: number }) =>
       productsApi.update(sku!, updates),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['history', sku, dateRange.from, dateRange.to] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['history', accountId, sku] });
+      queryClient.invalidateQueries({ queryKey: ['products', accountId] });
       setIsEditing(false);
     },
   });
@@ -206,7 +211,7 @@ export default function ProductDetail() {
   const addCompetitorMutation = useMutation({
     mutationFn: (url: string) => competitorsApi.addUrl(sku!, url),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['history', sku] });
+      queryClient.invalidateQueries({ queryKey: ['history', accountId, sku] });
       setNewCompetitorUrl('');
       setIsAddingUrl(false);
     },
@@ -215,14 +220,14 @@ export default function ProductDetail() {
   const removeCompetitorMutation = useMutation({
     mutationFn: (urlId: string) => competitorsApi.removeUrl(sku!, urlId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['history', sku] });
+      queryClient.invalidateQueries({ queryKey: ['history', accountId, sku] });
     },
   });
 
   const scrapeCompetitorMutation = useMutation({
     mutationFn: () => competitorsApi.scrapeSingle(sku!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['history', sku] });
+      queryClient.invalidateQueries({ queryKey: ['history', accountId, sku] });
     },
   });
 
@@ -230,8 +235,8 @@ export default function ProductDetail() {
     mutationFn: ({ channelId, price }: { channelId: string; price: number }) =>
       pricesApi.updateChannelPrice(sku!, channelId, price),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['history', sku] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['history', accountId, sku] });
+      queryClient.invalidateQueries({ queryKey: ['products', accountId] });
       setIsEditingPrice(false);
       setEditPrice('');
     },
@@ -428,19 +433,19 @@ export default function ProductDetail() {
       });
   }, [chartData, unitPeriod, allChannels]);
 
-  // Calculate sales data from history records (avoids fetching ALL SKUs)
+  // Calculate sales data from channelSales (actual order data)
   const { avgDailySales, avgDailyRevenue } = useMemo(() => {
-    if (!history || history.length === 0) {
-      return { avgDailySales: 0, avgDailyRevenue: 0 };
-    }
-    // Sum up all daily sales and revenue from history
+    // Sum up all sales and revenue from channelSales data
     let totalSales = 0;
     let totalRevenue = 0;
 
-    for (const record of history) {
-      totalSales += record.dailySales || 0;
-      totalRevenue += record.dailyRevenue || 0;
-    }
+    // channelSales is: { date: { channel: { quantity, revenue } } }
+    Object.values(channelSales).forEach(daySales => {
+      Object.values(daySales).forEach(channelData => {
+        totalSales += channelData.quantity || 0;
+        totalRevenue += channelData.revenue || 0;
+      });
+    });
 
     // Use the actual days for calculation
     const days = actualDays;
@@ -448,7 +453,7 @@ export default function ProductDetail() {
       avgDailySales: days > 0 ? totalSales / days : 0,
       avgDailyRevenue: days > 0 ? totalRevenue / days : 0,
     };
-  }, [history, actualDays]);
+  }, [channelSales, actualDays]);
 
   // Early returns must come AFTER all hooks
   if (isLoading) {
@@ -662,7 +667,7 @@ export default function ProductDetail() {
                   </div>
                   {isEditing ? (
                     <div className="flex items-center gap-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2">
-                      <span className="text-gray-500">£</span>
+                      <span className="text-gray-500">{currencySymbol}</span>
                       <input
                         type="number"
                         step="0.01"
@@ -675,7 +680,7 @@ export default function ProductDetail() {
                     </div>
                   ) : (
                     <p className={`text-xl font-semibold ${!costPrice ? 'text-red-500' : ''}`}>
-                      {costPrice ? `£${costPrice.toFixed(2)}` : 'Not set'}
+                      {costPrice ? `${currencySymbol}${costPrice.toFixed(2)}` : 'Not set'}
                     </p>
                   )}
                 </div>
@@ -689,7 +694,7 @@ export default function ProductDetail() {
                   </div>
                   {isEditing ? (
                     <div className="flex items-center gap-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2">
-                      <span className="text-gray-500">£</span>
+                      <span className="text-gray-500">{currencySymbol}</span>
                       <input
                         type="number"
                         step="0.01"
@@ -702,7 +707,7 @@ export default function ProductDetail() {
                     </div>
                   ) : (
                     <p className="text-xl font-semibold">
-                      {deliveryCost ? `£${deliveryCost.toFixed(2)}` : '-'}
+                      {deliveryCost ? `${currencySymbol}${deliveryCost.toFixed(2)}` : '-'}
                     </p>
                   )}
                 </div>
@@ -714,8 +719,8 @@ export default function ProductDetail() {
           <Card className="flex flex-col">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-medium text-gray-500 uppercase tracking-wide">Pricing & Margin</CardTitle>
-              {/* Channel selector - always show if there are channels */}
-              {allChannelTabs.length > 0 && (
+              {/* Channel selector - only show if multi-price mode and there are channels */}
+              {!isSinglePriceMode && allChannelTabs.length > 0 && (
                 <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
                   {channelsWithPrices.length > 0 && (
                     <button
@@ -773,16 +778,18 @@ export default function ProductDetail() {
                 <div className="flex-1 space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600 font-medium">
-                      {selectedChannel
-                        ? `${channelDisplayNames[selectedChannel]} Price`
-                        : channelsWithPrices.length > 1
-                          ? 'Average Price (All Channels)'
-                          : 'Selling Price'}
+                      {isSinglePriceMode
+                        ? 'Selling Price'
+                        : selectedChannel
+                          ? `${channelDisplayNames[selectedChannel]} Price`
+                          : channelsWithPrices.length > 1
+                            ? 'Average Price (All Channels)'
+                            : 'Selling Price'}
                     </span>
                     {isEditingPrice ? (
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1 bg-blue-50 border border-blue-300 rounded-lg px-2 py-1">
-                          <span className="text-blue-600">£</span>
+                          <span className="text-blue-600">{currencySymbol}</span>
                           <input
                             type="number"
                             step="0.01"
@@ -827,7 +834,7 @@ export default function ProductDetail() {
                         className="font-bold text-lg text-blue-600 hover:text-blue-700 hover:underline cursor-pointer flex items-center gap-1"
                         title={selectedChannel ? "Click to edit price" : "Select a channel to edit price"}
                       >
-                        £{sellingPrice.toFixed(2)}
+                        {currencySymbol}{sellingPrice.toFixed(2)}
                         <Pencil className="h-3 w-3 opacity-50" />
                       </button>
                     )}
@@ -848,23 +855,23 @@ export default function ProductDetail() {
                   )}
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Price ex VAT ({vatPercent}%)</span>
-                    <span className="font-semibold">£{priceExVat.toFixed(2)}</span>
+                    <span className="font-semibold">{currencySymbol}{priceExVat.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">
-                      Channel Fees ({commissionPercent}%{channelFixedFee > 0 ? ` + £${channelFixedFee.toFixed(2)}` : ''})
+                      Channel Fees ({commissionPercent}%{channelFixedFee > 0 ? ` + ${currencySymbol}${channelFixedFee.toFixed(2)}` : ''})
                     </span>
-                    <span className="font-semibold text-gray-500">-£{totalChannelFees.toFixed(2)}</span>
+                    <span className="font-semibold text-gray-500">-{currencySymbol}{totalChannelFees.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Cost + Delivery</span>
                     <span className={`font-semibold ${!costPrice && !deliveryCost ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {costPrice || deliveryCost ? `-£${(costPrice + deliveryCost).toFixed(2)}` : '-'}
+                      {costPrice || deliveryCost ? `-${currencySymbol}${(costPrice + deliveryCost).toFixed(2)}` : '-'}
                     </span>
                   </div>
                   <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
                     <span className="text-sm text-gray-600 font-medium">PPO</span>
-                    <span className={`font-semibold ${ppo < 0 ? 'text-red-600' : ''}`}>{costPrice ? `£${ppo.toFixed(2)}` : '-'}</span>
+                    <span className={`font-semibold ${ppo < 0 ? 'text-red-600' : ''}`}>{costPrice ? `${currencySymbol}${ppo.toFixed(2)}` : '-'}</span>
                   </div>
                 </div>
                 {/* Right: Hero Margin */}
@@ -909,7 +916,7 @@ export default function ProductDetail() {
                   <PoundSterling className="h-5 w-5 text-yellow-600" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xl font-semibold">£{avgDailyRevenue.toFixed(2)}</p>
+                  <p className="text-xl font-semibold">{currencySymbol}{avgDailyRevenue.toFixed(2)}</p>
                   <p className="text-xs text-gray-500">Daily Revenue</p>
                 </div>
               </div>
@@ -1033,9 +1040,9 @@ export default function ProductDetail() {
                       }}
                       formatter={(value: number, name: string) => {
                         if (value === null || value === undefined) return ['-', name];
-                        const revenueLabel = unitPeriod === 'day' ? 'Daily Revenue (£)' : unitPeriod === 'week' ? 'Weekly Revenue (£)' : 'Monthly Revenue (£)';
-                        if (name === 'Price (£)' || name === revenueLabel || name === 'Lowest Competitor (£)') {
-                          return [`£${value.toFixed(2)}`, name];
+                        const revenueLabel = unitPeriod === 'day' ? `Daily Revenue (${currencySymbol})` : unitPeriod === 'week' ? `Weekly Revenue (${currencySymbol})` : `Monthly Revenue (${currencySymbol})`;
+                        if (name === `Price (${currencySymbol})` || name === revenueLabel || name === `Lowest Competitor (${currencySymbol})`) {
+                          return [`${currencySymbol}${value.toFixed(2)}`, name];
                         }
                         if (name === 'Margin (%)') {
                           return [`${value.toFixed(1)}%`, name];
@@ -1071,7 +1078,7 @@ export default function ProductDetail() {
                       strokeWidth={2}
                       dot={{ r: 2, fill: '#3b82f6' }}
                       activeDot={{ r: 4 }}
-                      name="Price (£)"
+                      name={`Price (${currencySymbol})`}
                       hide={hiddenLines.has('price')}
                       connectNulls={false}
                     />
@@ -1095,7 +1102,7 @@ export default function ProductDetail() {
                       strokeWidth={2}
                       dot={{ r: 2, fill: '#8b5cf6' }}
                       activeDot={{ r: 4 }}
-                      name={unitPeriod === 'day' ? 'Daily Revenue (£)' : unitPeriod === 'week' ? 'Weekly Revenue (£)' : 'Monthly Revenue (£)'}
+                      name={unitPeriod === 'day' ? `Daily Revenue (${currencySymbol})` : unitPeriod === 'week' ? `Weekly Revenue (${currencySymbol})` : `Monthly Revenue (${currencySymbol})`}
                       hide={hiddenLines.has('revenue')}
                       connectNulls={false}
                     />
@@ -1108,7 +1115,7 @@ export default function ProductDetail() {
                       strokeDasharray="5 5"
                       dot={{ r: 2, fill: '#ef4444' }}
                       activeDot={{ r: 4 }}
-                      name="Lowest Competitor (£)"
+                      name={`Lowest Competitor (${currencySymbol})`}
                       hide={hiddenLines.has('lowestCompetitor')}
                       connectNulls={false}
                     />
@@ -1201,7 +1208,7 @@ export default function ProductDetail() {
               <div>
                 <CardTitle className="text-sm font-medium text-gray-500 uppercase tracking-wide">Competitor Monitoring</CardTitle>
                 {competitorFloorPrice && (
-                  <p className="text-lg font-semibold text-indigo-600">Floor: £{competitorFloorPrice.toFixed(2)}</p>
+                  <p className="text-lg font-semibold text-indigo-600">Floor: {currencySymbol}{competitorFloorPrice.toFixed(2)}</p>
                 )}
               </div>
             </div>
@@ -1279,7 +1286,7 @@ export default function ProductDetail() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{comp.competitorName}</span>
                         {comp.lastPrice && (
-                          <Badge variant="success">£{comp.lastPrice.toFixed(2)}</Badge>
+                          <Badge variant="success">{currencySymbol}{comp.lastPrice.toFixed(2)}</Badge>
                         )}
                         {comp.lastError && (
                           <span className="flex items-center gap-1 text-xs text-red-600">
@@ -1386,10 +1393,10 @@ export default function ProductDetail() {
                         {/* Price Change Info */}
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-700">£{proposal.currentPrice.toFixed(2)}</span>
+                            <span className="font-medium text-gray-700">{currencySymbol}{proposal.currentPrice.toFixed(2)}</span>
                             <ArrowRight className="h-4 w-4 text-gray-400" />
                             <span className="font-semibold text-gray-900">
-                              £{(proposal.approvedPrice ?? proposal.proposedPrice).toFixed(2)}
+                              {currencySymbol}{(proposal.approvedPrice ?? proposal.proposedPrice).toFixed(2)}
                             </span>
                             <span className={`flex items-center gap-1 text-sm ${priceChangePositive ? 'text-green-600' : proposal.priceChange < 0 ? 'text-red-600' : 'text-gray-500'}`}>
                               <PriceIcon className="h-3 w-3" />

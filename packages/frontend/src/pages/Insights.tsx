@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { analyticsApi, proposalsApi, type InsightCategory, type InsightProduct } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/Card';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
@@ -91,10 +92,12 @@ function InsightCard({
   insight,
   isExpanded,
   onToggle,
+  currencySymbol,
 }: {
   insight: InsightCategory;
   isExpanded: boolean;
   onToggle: () => void;
+  currencySymbol: string;
 }) {
   const colors = severityColors[insight.severity];
   const Icon = insightIcons[insight.id] || AlertTriangle;
@@ -122,7 +125,7 @@ function InsightCard({
               <span className={`text-2xl font-bold ${colors.text}`}>{insight.count}</span>
               {insight.dailyRevenueImpact !== undefined && insight.dailyRevenueImpact > 0 && (
                 <p className={`text-sm font-medium ${colors.text}`}>
-                  £{insight.dailyRevenueImpact.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/day at risk
+                  {currencySymbol}{insight.dailyRevenueImpact.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/day at risk
                 </p>
               )}
             </div>
@@ -186,7 +189,7 @@ function InsightCard({
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {insight.products.slice(0, 20).map((product) => (
-                  <ProductRow key={product.sku} product={product} />
+                  <ProductRow key={product.sku} product={product} currencySymbol={currencySymbol} />
                 ))}
               </tbody>
             </table>
@@ -202,7 +205,7 @@ function InsightCard({
   );
 }
 
-function ProductRow({ product }: { product: InsightProduct }) {
+function ProductRow({ product, currencySymbol }: { product: InsightProduct; currencySymbol: string }) {
   const marginColor =
     product.margin < 0
       ? 'text-red-600'
@@ -246,7 +249,7 @@ function ProductRow({ product }: { product: InsightProduct }) {
         </div>
       </td>
       <td className="px-4 py-3 text-right text-gray-900">
-        {product.currentPrice > 0 ? `£${product.currentPrice.toFixed(2)}` : '-'}
+        {product.currentPrice > 0 ? `${currencySymbol}${product.currentPrice.toFixed(2)}` : '-'}
       </td>
       <td className={`px-4 py-3 text-right font-medium ${marginColor}`}>
         {product.margin.toFixed(1)}%
@@ -274,6 +277,7 @@ function ProductRow({ product }: { product: InsightProduct }) {
 
 export default function Insights() {
   const { accountId } = useAccountQuery();
+  const { currencySymbol } = useAccount();
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -408,6 +412,7 @@ export default function Insights() {
               insight={insight}
               isExpanded={expandedCards.has(insight.id)}
               onToggle={() => toggleCard(insight.id)}
+              currencySymbol={currencySymbol}
             />
           ))}
 

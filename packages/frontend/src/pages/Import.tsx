@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Upload, FileText, CheckCircle, AlertCircle, Download, Truck, DollarSign } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { importApi, DeliveryImportResult } from '../api';
+import { useAccount } from '../context/AccountContext';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
 
@@ -32,6 +33,7 @@ type ImportTab = 'costs' | 'delivery';
 
 export default function Import() {
   const queryClient = useQueryClient();
+  const { currencySymbol } = useAccount();
   const [activeTab, setActiveTab] = useState<ImportTab>('costs');
 
   // Cost import state
@@ -455,9 +457,9 @@ export default function Import() {
                         {costParsedData.slice(0, 10).map((row, i) => (
                           <tr key={i}>
                             <td className="px-3 py-2 font-mono">{row.sku}</td>
-                            <td className="px-3 py-2">£{row.costPrice.toFixed(2)}</td>
+                            <td className="px-3 py-2">{currencySymbol}{row.costPrice.toFixed(2)}</td>
                             <td className="px-3 py-2">
-                              {row.deliveryCost ? `£${row.deliveryCost.toFixed(2)}` : '-'}
+                              {row.deliveryCost ? `${currencySymbol}${row.deliveryCost.toFixed(2)}` : '-'}
                             </td>
                           </tr>
                         ))}

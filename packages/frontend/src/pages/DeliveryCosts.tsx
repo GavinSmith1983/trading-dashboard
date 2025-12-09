@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Truck, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { carriersApi } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import type { CarrierCost, RecalculateResult } from '../api';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -14,6 +15,7 @@ import ErrorMessage from '../components/ErrorMessage';
 export default function DeliveryCosts() {
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
+  const { currencySymbol } = useAccount();
   const [editingCarrier, setEditingCarrier] = useState<CarrierCost | null>(null);
   const [formData, setFormData] = useState<Partial<CarrierCost>>({});
   const [showAddForm, setShowAddForm] = useState(false);
@@ -232,8 +234,8 @@ export default function DeliveryCosts() {
                       {recalculateResult.updatedSkus.map((item) => (
                         <tr key={item.sku} className="border-t border-green-200">
                           <td className="py-1 font-mono text-xs">{item.sku}</td>
-                          <td className="py-1">£{item.oldCost.toFixed(2)}</td>
-                          <td className="py-1 font-medium">£{item.newCost.toFixed(2)}</td>
+                          <td className="py-1">{currencySymbol}{item.oldCost.toFixed(2)}</td>
+                          <td className="py-1 font-medium">{currencySymbol}{item.newCost.toFixed(2)}</td>
                           <td className="py-1">{item.carrier}</td>
                         </tr>
                       ))}
@@ -350,7 +352,7 @@ export default function DeliveryCosts() {
                       />
                     ) : (
                       <span className={carrier.costPerParcel === 0 ? 'text-red-500' : 'font-medium'}>
-                        {carrier.costPerParcel > 0 ? `£${carrier.costPerParcel.toFixed(2)}` : 'Not set'}
+                        {carrier.costPerParcel > 0 ? `${currencySymbol}${carrier.costPerParcel.toFixed(2)}` : 'Not set'}
                       </span>
                     )}
                   </TableCell>

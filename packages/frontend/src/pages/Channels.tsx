@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Store } from 'lucide-react';
 import { channelsApi } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import type { Channel } from '../types';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -13,6 +14,7 @@ import ErrorMessage from '../components/ErrorMessage';
 export default function Channels() {
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
+  const { currencySymbol } = useAccount();
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [formData, setFormData] = useState<Partial<Channel>>({});
 
@@ -121,7 +123,7 @@ export default function Channels() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Fixed Fee (£)
+                      Fixed Fee ({currencySymbol})
                     </label>
                     <input
                       type="number"
@@ -210,7 +212,7 @@ export default function Channels() {
                   {channel.fixedFee ? (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Fixed Fee</span>
-                      <span className="font-medium">£{channel.fixedFee.toFixed(2)}</span>
+                      <span className="font-medium">{currencySymbol}{channel.fixedFee.toFixed(2)}</span>
                     </div>
                   ) : null}
                   {channel.paymentProcessingPercent ? (

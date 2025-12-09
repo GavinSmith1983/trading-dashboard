@@ -348,7 +348,8 @@ async function handleProducts(
       costPrice: body.costPrice ?? existing.costPrice,
       deliveryCost: body.deliveryCost ?? existing.deliveryCost,
       mrp: body.mrp ?? existing.mrp,
-      category: body.category ?? existing.category,
+      family: body.family ?? existing.family,
+      subcategory: body.subcategory ?? existing.subcategory,
       competitorUrls: body.competitorUrls ?? existing.competitorUrls,
     };
 
@@ -603,6 +604,7 @@ async function handleAnalytics(
     const days = parseInt(params.days || '30', 10);
     const includeDaily = params.includeDaily === 'true';
     const includePreviousYear = params.includePreviousYear === 'true';
+    const includePreviousMonth = params.includePreviousMonth === 'true';
 
     // Calculate date range
     const today = new Date();
@@ -626,6 +628,20 @@ async function handleAnalytics(
       previousYearFromDateStr = previousYearFromDate.toISOString().substring(0, 10);
       previousYearToDateStr = previousYearToDate.toISOString().substring(0, 10);
       previousYearOrderLines = await db.getOrderLinesByDateRange(accountId, previousYearFromDateStr, previousYearToDateStr);
+    }
+
+    // Also fetch previous month data if requested
+    let previousMonthOrderLines: typeof orderLines = [];
+    let previousMonthFromDateStr = '';
+    let previousMonthToDateStr = '';
+    if (includePreviousMonth) {
+      const previousMonthFromDate = new Date(fromDate);
+      previousMonthFromDate.setMonth(previousMonthFromDate.getMonth() - 1);
+      const previousMonthToDate = new Date(today);
+      previousMonthToDate.setMonth(previousMonthToDate.getMonth() - 1);
+      previousMonthFromDateStr = previousMonthFromDate.toISOString().substring(0, 10);
+      previousMonthToDateStr = previousMonthToDate.toISOString().substring(0, 10);
+      previousMonthOrderLines = await db.getOrderLinesByDateRange(accountId, previousMonthFromDateStr, previousMonthToDateStr);
     }
 
     // Aggregate by SKU, channel, and optionally by day
@@ -696,17 +712,21 @@ async function handleAnalytics(
     // Process previous year data if requested
     let previousYearDailySales: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
     let previousYearTotals: { quantity: number; revenue: number; orders: number } | undefined;
+    let previousYearTotalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
     if (includePreviousYear && previousYearOrderLines.length > 0) {
       previousYearDailySales = {};
+      previousYearTotalsByChannel = {};
       const pyOrderIdsByDate: Record<string, Set<string>> = {};
       let pyTotalQuantity = 0;
       let pyTotalRevenue = 0;
       let pyTotalOrders = 0;
       const pyAllOrderIds = new Set<string>();
+      const pyChannelOrderIds: Record<string, Set<string>> = {};
 
       for (const line of previousYearOrderLines) {
         const dateDay = line.orderDateDay || '';
         const orderId = line.orderId || '';
+        const channel = line.channelName || 'Unknown';
 
         // Shift date forward by 1 year to align with current year
         if (dateDay) {
@@ -727,6 +747,20 @@ async function handleAnalytics(
           }
         }
 
+        // Previous year channel aggregation
+        if (!previousYearTotalsByChannel[channel]) {
+          previousYearTotalsByChannel[channel] = { quantity: 0, revenue: 0, orders: 0 };
+          pyChannelOrderIds[channel] = new Set();
+        }
+        previousYearTotalsByChannel[channel].quantity += line.quantity || 0;
+        previousYearTotalsByChannel[channel].revenue += line.lineTotalInclVat || 0;
+
+        const orderKey = `${channel}:${orderId}`;
+        if (!pyChannelOrderIds[channel].has(orderKey)) {
+          pyChannelOrderIds[channel].add(orderKey);
+          previousYearTotalsByChannel[channel].orders++;
+        }
+
         // Previous year totals
         pyTotalQuantity += line.quantity || 0;
         pyTotalRevenue += line.lineTotalInclVat || 0;
@@ -741,6 +775,181 @@ async function handleAnalytics(
         revenue: Math.round(pyTotalRevenue * 100) / 100,
         orders: pyTotalOrders,
       };
+    }
+
+    // Process previous month data if requested
+    let previousMonthDailySales: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+    let previousMonthTotals: { quantity: number; revenue: number; orders: number } | undefined;
+    let previousMonthTotalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+    if (includePreviousMonth && previousMonthOrderLines.length > 0) {
+      previousMonthDailySales = {};
+      previousMonthTotalsByChannel = {};
+      const pmOrderIdsByDate: Record<string, Set<string>> = {};
+      let pmTotalQuantity = 0;
+      let pmTotalRevenue = 0;
+      let pmTotalOrders = 0;
+      const pmAllOrderIds = new Set<string>();
+      const pmChannelOrderIds: Record<string, Set<string>> = {};
+
+      for (const line of previousMonthOrderLines) {
+        const dateDay = line.orderDateDay || '';
+        const orderId = line.orderId || '';
+        const channel = line.channelName || 'Unknown';
+
+        // Shift date forward by 1 month to align with current period
+        if (dateDay) {
+          const [year, month, day] = dateDay.split('-').map(Number);
+          const shiftedDateObj = new Date(Date.UTC(year, month - 1 + 1, day)); // Add 1 month
+          const shiftedDate = shiftedDateObj.toISOString().substring(0, 10);
+
+          if (!previousMonthDailySales[shiftedDate]) {
+            previousMonthDailySales[shiftedDate] = { quantity: 0, revenue: 0, orders: 0 };
+            pmOrderIdsByDate[shiftedDate] = new Set();
+          }
+
+          previousMonthDailySales[shiftedDate].quantity += line.quantity || 0;
+          previousMonthDailySales[shiftedDate].revenue += line.lineTotalInclVat || 0;
+
+          if (!pmOrderIdsByDate[shiftedDate].has(orderId)) {
+            pmOrderIdsByDate[shiftedDate].add(orderId);
+            previousMonthDailySales[shiftedDate].orders++;
+          }
+        }
+
+        // Previous month channel aggregation
+        if (!previousMonthTotalsByChannel[channel]) {
+          previousMonthTotalsByChannel[channel] = { quantity: 0, revenue: 0, orders: 0 };
+          pmChannelOrderIds[channel] = new Set();
+        }
+        previousMonthTotalsByChannel[channel].quantity += line.quantity || 0;
+        previousMonthTotalsByChannel[channel].revenue += line.lineTotalInclVat || 0;
+
+        const orderKey = `${channel}:${orderId}`;
+        if (!pmChannelOrderIds[channel].has(orderKey)) {
+          pmChannelOrderIds[channel].add(orderKey);
+          previousMonthTotalsByChannel[channel].orders++;
+        }
+
+        // Previous month totals
+        pmTotalQuantity += line.quantity || 0;
+        pmTotalRevenue += line.lineTotalInclVat || 0;
+        if (!pmAllOrderIds.has(orderId)) {
+          pmAllOrderIds.add(orderId);
+          pmTotalOrders++;
+        }
+      }
+
+      previousMonthTotals = {
+        quantity: pmTotalQuantity,
+        revenue: Math.round(pmTotalRevenue * 100) / 100,
+        orders: pmTotalOrders,
+      };
+    }
+
+    // Build category breakdown by joining with products
+    // Note: Uses 'family' as primary categorisation (from Akeneo PIM), falls back to 'subcategory'
+    const includeCategories = params.includeCategories === 'true';
+    let totalsByCategory: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+    let dailySalesByFamily: Record<string, Record<string, { quantity: number; revenue: number }>> | undefined;
+    let previousYearTotalsByCategory: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+    let previousMonthTotalsByCategory: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+
+    if (includeCategories) {
+      // Get all products to map SKU -> family (primary categorisation from Akeneo)
+      const products = await db.getAllProducts(accountId);
+      const skuToCategory: Record<string, string> = {};
+      for (const product of products) {
+        // Use family (from Akeneo) as primary, fall back to subcategory (from ChannelEngine)
+        skuToCategory[product.sku] = product.family || product.subcategory || 'Uncategorized';
+      }
+
+      // Current year category aggregation
+      totalsByCategory = {};
+      const categoryOrderIds: Record<string, Set<string>> = {};
+
+      // Daily sales by family (same structure as dailySales but by family)
+      if (includeDaily) {
+        dailySalesByFamily = {};
+      }
+
+      for (const line of orderLines) {
+        const category = skuToCategory[line.sku] || 'Uncategorized';
+        const orderId = line.orderId || '';
+        const dateDay = line.orderDateDay || '';
+
+        if (!totalsByCategory[category]) {
+          totalsByCategory[category] = { quantity: 0, revenue: 0, orders: 0 };
+          categoryOrderIds[category] = new Set();
+        }
+        totalsByCategory[category].quantity += line.quantity || 0;
+        totalsByCategory[category].revenue += line.lineTotalInclVat || 0;
+
+        const orderKey = `${category}:${orderId}`;
+        if (!categoryOrderIds[category].has(orderKey)) {
+          categoryOrderIds[category].add(orderKey);
+          totalsByCategory[category].orders++;
+        }
+
+        // Daily aggregation by family
+        if (includeDaily && dateDay && dailySalesByFamily) {
+          if (!dailySalesByFamily[dateDay]) {
+            dailySalesByFamily[dateDay] = {};
+          }
+          if (!dailySalesByFamily[dateDay][category]) {
+            dailySalesByFamily[dateDay][category] = { quantity: 0, revenue: 0 };
+          }
+          dailySalesByFamily[dateDay][category].quantity += line.quantity || 0;
+          dailySalesByFamily[dateDay][category].revenue += line.lineTotalInclVat || 0;
+        }
+      }
+
+      // Previous year category aggregation
+      if (includePreviousYear && previousYearOrderLines.length > 0) {
+        previousYearTotalsByCategory = {};
+        const pyCategoryOrderIds: Record<string, Set<string>> = {};
+
+        for (const line of previousYearOrderLines) {
+          const category = skuToCategory[line.sku] || 'Uncategorized';
+          const orderId = line.orderId || '';
+
+          if (!previousYearTotalsByCategory[category]) {
+            previousYearTotalsByCategory[category] = { quantity: 0, revenue: 0, orders: 0 };
+            pyCategoryOrderIds[category] = new Set();
+          }
+          previousYearTotalsByCategory[category].quantity += line.quantity || 0;
+          previousYearTotalsByCategory[category].revenue += line.lineTotalInclVat || 0;
+
+          const orderKey = `${category}:${orderId}`;
+          if (!pyCategoryOrderIds[category].has(orderKey)) {
+            pyCategoryOrderIds[category].add(orderKey);
+            previousYearTotalsByCategory[category].orders++;
+          }
+        }
+      }
+
+      // Previous month category aggregation
+      if (includePreviousMonth && previousMonthOrderLines.length > 0) {
+        previousMonthTotalsByCategory = {};
+        const pmCategoryOrderIds: Record<string, Set<string>> = {};
+
+        for (const line of previousMonthOrderLines) {
+          const category = skuToCategory[line.sku] || 'Uncategorized';
+          const orderId = line.orderId || '';
+
+          if (!previousMonthTotalsByCategory[category]) {
+            previousMonthTotalsByCategory[category] = { quantity: 0, revenue: 0, orders: 0 };
+            pmCategoryOrderIds[category] = new Set();
+          }
+          previousMonthTotalsByCategory[category].quantity += line.quantity || 0;
+          previousMonthTotalsByCategory[category].revenue += line.lineTotalInclVat || 0;
+
+          const orderKey = `${category}:${orderId}`;
+          if (!pmCategoryOrderIds[category].has(orderKey)) {
+            pmCategoryOrderIds[category].add(orderKey);
+            previousMonthTotalsByCategory[category].orders++;
+          }
+        }
+      }
     }
 
     const result: Record<string, unknown> = {
@@ -768,7 +977,32 @@ async function handleAnalytics(
         toDate: previousYearToDateStr,
         dailySales: previousYearDailySales || {},
         totals: previousYearTotals || { quantity: 0, revenue: 0, orders: 0 },
+        totalsByChannel: previousYearTotalsByChannel || {},
       };
+    }
+
+    if (includePreviousMonth) {
+      result.previousMonth = {
+        fromDate: previousMonthFromDateStr,
+        toDate: previousMonthToDateStr,
+        dailySales: previousMonthDailySales || {},
+        totals: previousMonthTotals || { quantity: 0, revenue: 0, orders: 0 },
+        totalsByChannel: previousMonthTotalsByChannel || {},
+      };
+    }
+
+    if (includeCategories) {
+      result.totalsByCategory = totalsByCategory || {};
+      result.categories = Object.keys(totalsByCategory || {}).sort();
+      if (includeDaily) {
+        result.dailySalesByFamily = dailySalesByFamily || {};
+      }
+      if (includePreviousYear) {
+        result.previousYearTotalsByCategory = previousYearTotalsByCategory || {};
+      }
+      if (includePreviousMonth) {
+        result.previousMonthTotalsByCategory = previousMonthTotalsByCategory || {};
+      }
     }
 
     return response(200, result);

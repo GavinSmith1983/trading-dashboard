@@ -3,6 +3,8 @@ import {
   createDynamoDBServiceV2,
   createGoogleSheetsService,
   createChannelEngineService,
+  AkeneoService,
+  AkeneoProductEnrichment,
   Product,
   Account,
   SkuHistoryRecord,
@@ -13,6 +15,7 @@ import {
 } from '@aws-sdk/client-secrets-manager';
 
 const secretsClient = new SecretsManagerClient({});
+const AKENEO_SECRET_ARN = process.env.AKENEO_SECRET_ARN;
 
 /**
  * V2 Data Sync Lambda - Multi-tenant
@@ -102,10 +105,69 @@ async function syncAccount(
     }
   }
 
-  // 3. Create ChannelEngine service for this account
+  // 3. Fetch Akeneo PIM data for product enrichment (Family)
+  // Uses cached data from existing products, refreshes every 7 days
+  let akeneoData = new Map<string, AkeneoProductEnrichment>();
+  let shouldRefreshAkeneo = false;
+
+  if (AKENEO_SECRET_ARN) {
+    // Check if we need to refresh Akeneo data (every 7 days)
+    const AKENEO_REFRESH_DAYS = 7;
+    const oldestAllowedSync = new Date();
+    oldestAllowedSync.setDate(oldestAllowedSync.getDate() - AKENEO_REFRESH_DAYS);
+
+    // Check if any product has a recent Akeneo sync
+    const recentAkeneoSync = existingProducts.find(p => {
+      if (!p.lastSyncedFromAkeneo) return false;
+      return new Date(p.lastSyncedFromAkeneo) > oldestAllowedSync;
+    });
+
+    if (recentAkeneoSync) {
+      // Use cached Akeneo data from existing products
+      console.log(`[${accountId}] Using cached Akeneo data (last sync: ${recentAkeneoSync.lastSyncedFromAkeneo})`);
+      for (const product of existingProducts) {
+        if (product.family) {
+          akeneoData.set(product.sku, {
+            sku: product.sku,
+            family: product.family,
+            categories: [],
+            enabled: true,
+            updated: product.lastSyncedFromAkeneo || '',
+          });
+        }
+      }
+      console.log(`[${accountId}] Loaded ${akeneoData.size} products from cache`);
+    } else {
+      // Need to refresh from Akeneo API
+      shouldRefreshAkeneo = true;
+      try {
+        console.log(`[${accountId}] Refreshing Akeneo PIM data (cache expired or empty)...`);
+        akeneoData = await fetchAkeneoData();
+        console.log(`[${accountId}] Loaded ${akeneoData.size} products from Akeneo API`);
+      } catch (error) {
+        console.warn(`[${accountId}] Failed to fetch Akeneo data, using existing cache:`, error);
+        // Fall back to cached data from existing products
+        for (const product of existingProducts) {
+          if (product.family) {
+            akeneoData.set(product.sku, {
+              sku: product.sku,
+              family: product.family,
+              categories: [],
+              enabled: true,
+              updated: product.lastSyncedFromAkeneo || '',
+            });
+          }
+        }
+      }
+    }
+  } else {
+    console.log(`[${accountId}] Akeneo not configured (no AKENEO_SECRET_ARN)`);
+  }
+
+  // 4. Create ChannelEngine service for this account
   const ceService = createChannelEngineServiceFromAccount(account);
 
-  // 4. Fetch products from ChannelEngine and save incrementally
+  // 5. Fetch products from ChannelEngine and save incrementally
   console.log(`[${accountId}] Starting incremental fetch and save from ChannelEngine...`);
   let totalSaved = 0;
 
@@ -122,6 +184,13 @@ async function syncAccount(
         ? (sheetData.get(sku) ||
            sheetData.get(sku.toUpperCase()) ||
            sheetData.get(sku.toLowerCase()))
+        : undefined;
+
+      // Get Akeneo enrichment data (try exact match, then uppercase, then lowercase)
+      const akeneoProduct = sku
+        ? (akeneoData.get(sku) ||
+           akeneoData.get(sku.toUpperCase()) ||
+           akeneoData.get(sku.toLowerCase()))
         : undefined;
 
       // Build channel prices from Google Sheets
@@ -141,7 +210,10 @@ async function syncAccount(
         sku,
         title: ceProduct.Name || sku,
         brand: ceProduct.Brand || 'Unknown',
-        category: ceProduct.CategoryTrail || 'Uncategorized',
+        // Family from Akeneo PIM (primary categorisation)
+        family: akeneoProduct?.family || existing?.family,
+        // Subcategory from ChannelEngine CategoryTrail (secondary categorisation)
+        subcategory: ceProduct.CategoryTrail || existing?.subcategory || 'Uncategorized',
         imageUrl: ceProduct.ImageUrl || existing?.imageUrl,
         mrp: existing?.mrp || 0,
         currentPrice: ceProduct.Price,
@@ -156,6 +228,8 @@ async function syncAccount(
         lastUpdated: timestamp,
         lastSyncedFromChannelEngine: timestamp,
         lastSyncedFromSheet: sheetProduct ? timestamp : existing?.lastSyncedFromSheet,
+        // Only update Akeneo timestamp if we refreshed from API (not from cache)
+        lastSyncedFromAkeneo: (shouldRefreshAkeneo && akeneoProduct) ? timestamp : existing?.lastSyncedFromAkeneo,
         competitorUrls: existing?.competitorUrls,
         competitorFloorPrice: existing?.competitorFloorPrice,
       };
@@ -170,15 +244,40 @@ async function syncAccount(
     );
   });
 
-  // 5. Calculate and update sales data from order lines
+  // 6. Calculate and update sales data from order lines
   console.log(`[${accountId}] Calculating sales data from order lines...`);
   await updateSalesData(db, accountId);
 
-  // 6. Record daily history
+  // 7. Record daily history
   console.log(`[${accountId}] Recording daily history snapshots...`);
   await recordDailyHistory(db, accountId);
 
   return totalSaved;
+}
+
+/**
+ * Fetch product data from Akeneo PIM
+ * Returns a map of SKU -> enrichment data for easy lookup
+ */
+async function fetchAkeneoData(): Promise<Map<string, AkeneoProductEnrichment>> {
+  if (!AKENEO_SECRET_ARN) {
+    return new Map();
+  }
+
+  // Get credentials from Secrets Manager
+  const secretResponse = await secretsClient.send(
+    new GetSecretValueCommand({ SecretId: AKENEO_SECRET_ARN })
+  );
+
+  if (!secretResponse.SecretString) {
+    throw new Error('Akeneo secret is empty');
+  }
+
+  const config = JSON.parse(secretResponse.SecretString);
+  const akeneoService = new AkeneoService(config);
+
+  // Fetch all products from Akeneo
+  return akeneoService.fetchAllProducts();
 }
 
 /**

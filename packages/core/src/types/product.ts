@@ -1,6 +1,6 @@
 /**
  * Core product data structure
- * Combines data from Google Sheets, ChannelEngine, and manual configuration
+ * Combines data from Google Sheets, ChannelEngine, Akeneo PIM, and manual configuration
  */
 export interface Product {
   // Identifiers
@@ -8,7 +8,9 @@ export interface Product {
   balterleySku?: string;
   title: string;
   brand: string;
-  category?: string;
+  family?: string; // Primary categorisation from Akeneo PIM
+  subcategory?: string; // Secondary categorisation from ChannelEngine
+  category?: string; // Alias for subcategory (V1 compatibility)
   familyVariants?: string;
   imageUrl?: string;
 
@@ -51,6 +53,7 @@ export interface Product {
   lastUpdated: string;
   lastSyncedFromSheet?: string;
   lastSyncedFromChannelEngine?: string;
+  lastSyncedFromAkeneo?: string;
 }
 
 /**

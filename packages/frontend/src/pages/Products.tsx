@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { productsApi, analyticsApi } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import type { Product } from '../types';
 import { Card, CardContent } from '../components/Card';
 import Badge from '../components/Badge';
@@ -41,6 +42,7 @@ export default function Products() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
+  const { currencySymbol } = useAccount();
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editCost, setEditCost] = useState('');
@@ -286,7 +288,7 @@ export default function Products() {
                 <TrendingUp className="h-5 w-5 text-purple-600" />
               </div>
               <div>
-                <p className="text-2xl font-semibold">£{avgDailyRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                <p className="text-2xl font-semibold">{currencySymbol}{avgDailyRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                 <p className="text-sm text-gray-500">Avg Daily Revenue</p>
               </div>
             </div>
@@ -556,7 +558,7 @@ export default function Products() {
                     <Badge>{product.brand || 'Unknown'}</Badge>
                   </TableCell>
                   <TableCell className="font-medium">
-                    £{product.currentPrice?.toFixed(2) || '0.00'}
+                    {currencySymbol}{product.currentPrice?.toFixed(2) || '0.00'}
                   </TableCell>
                   <TableCell>
                     {editingProduct?.sku === product.sku ? (
@@ -570,7 +572,7 @@ export default function Products() {
                       />
                     ) : (
                       <span className={!product.costPrice ? 'text-red-500' : ''}>
-                        {product.costPrice ? `£${product.costPrice.toFixed(2)}` : 'Not set'}
+                        {product.costPrice ? `${currencySymbol}${product.costPrice.toFixed(2)}` : 'Not set'}
                       </span>
                     )}
                   </TableCell>
@@ -585,7 +587,7 @@ export default function Products() {
                       />
                     ) : (
                       <span>
-                        {product.deliveryCost ? `£${product.deliveryCost.toFixed(2)}` : '-'}
+                        {product.deliveryCost ? `${currencySymbol}${product.deliveryCost.toFixed(2)}` : '-'}
                       </span>
                     )}
                   </TableCell>
@@ -594,7 +596,7 @@ export default function Products() {
                     {(() => {
                       const priceExVat = (product.currentPrice || 0) / 1.2;
                       const twentyPercent = priceExVat * 0.2;
-                      return `£${twentyPercent.toFixed(2)}`;
+                      return `${currencySymbol}${twentyPercent.toFixed(2)}`;
                     })()}
                   </TableCell>
                   <TableCell>
@@ -607,7 +609,7 @@ export default function Products() {
                       const ppo = priceExVat - clawback - delivery - cost;
                       return (
                         <span className={ppo < 0 ? 'text-red-600 font-medium' : ppo > 0 ? 'text-green-600 font-medium' : ''}>
-                          £{ppo.toFixed(2)}
+                          {currencySymbol}{ppo.toFixed(2)}
                         </span>
                       );
                     })()}
@@ -648,7 +650,7 @@ export default function Products() {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium">
-                      £{((sales[product.sku]?.revenue || 0) / salesDays).toFixed(0)}
+                      {currencySymbol}{((sales[product.sku]?.revenue || 0) / salesDays).toFixed(0)}
                     </span>
                   </TableCell>
                   <TableCell>

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { proposalsApi, rulesApi, type ProposalFilters } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import type { PriceProposal, ProposalStatus } from '../types';
 import { Card, CardContent } from '../components/Card';
 import Loading from '../components/Loading';
@@ -35,7 +36,7 @@ const statusConfig: Record<ProposalStatus, { label: string; color: string; bg: s
   pushed: { label: 'Pushed', color: 'text-purple-700', bg: 'bg-purple-100' },
 };
 
-function PriceChangeBadge({ change, percent }: { change: number; percent: number }) {
+function PriceChangeBadge({ change, percent, currencySymbol }: { change: number; percent: number; currencySymbol: string }) {
   const isIncrease = change > 0;
   const isDecrease = change < 0;
 
@@ -56,7 +57,7 @@ function PriceChangeBadge({ change, percent }: { change: number; percent: number
     >
       {isIncrease ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       <span>
-        {isIncrease ? '+' : ''}£{change.toFixed(2)} ({isIncrease ? '+' : ''}
+        {isIncrease ? '+' : ''}{currencySymbol}{change.toFixed(2)} ({isIncrease ? '+' : ''}
         {percent.toFixed(1)}%)
       </span>
     </span>
@@ -96,10 +97,12 @@ function ModifyPriceModal({
   proposal,
   onClose,
   onSubmit,
+  currencySymbol,
 }: {
   proposal: PriceProposal;
   onClose: () => void;
   onSubmit: (price: number, notes: string) => void;
+  currencySymbol: string;
 }) {
   const [price, setPrice] = useState(proposal.proposedPrice.toFixed(2));
   const [notes, setNotes] = useState('');
@@ -120,14 +123,14 @@ function ModifyPriceModal({
           </div>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">Current Price</label>
-            <p className="text-gray-900">£{proposal.currentPrice.toFixed(2)}</p>
+            <p className="text-gray-900">{currencySymbol}{proposal.currentPrice.toFixed(2)}</p>
           </div>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-1">Suggested Price</label>
-            <p className="text-gray-500">£{proposal.proposedPrice.toFixed(2)}</p>
+            <p className="text-gray-500">{currencySymbol}{proposal.proposedPrice.toFixed(2)}</p>
           </div>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">New Price (£)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">New Price ({currencySymbol})</label>
             <input
               type="number"
               step="0.01"
@@ -171,6 +174,7 @@ function ModifyPriceModal({
 export default function Proposals() {
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
+  const { currencySymbol } = useAccount();
   const [filters, setFilters] = useState<ProposalFilters>({
     status: undefined,
     page: 1,
@@ -614,13 +618,13 @@ export default function Proposals() {
                     <td className="px-3 py-3">
                       <div className="text-sm">
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-600">£{proposal.currentPrice.toFixed(2)}</span>
+                          <span className="text-gray-600">{currencySymbol}{proposal.currentPrice.toFixed(2)}</span>
                           <span className="text-gray-400">→</span>
                           <span className="font-medium text-gray-900">
-                            £{(proposal.approvedPrice || proposal.proposedPrice).toFixed(2)}
+                            {currencySymbol}{(proposal.approvedPrice || proposal.proposedPrice).toFixed(2)}
                           </span>
                         </div>
-                        <PriceChangeBadge change={proposal.priceChange} percent={proposal.priceChangePercent} />
+                        <PriceChangeBadge change={proposal.priceChange} percent={proposal.priceChangePercent} currencySymbol={currencySymbol} />
                       </div>
                     </td>
                     <td className="px-3 py-3">
@@ -643,11 +647,11 @@ export default function Proposals() {
                       <div className="text-xs space-y-1">
                         <div className={`font-medium ${(proposal.estimatedWeeklyProfitImpact || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {(proposal.estimatedWeeklyProfitImpact || 0) >= 0 ? '+' : ''}
-                          £{(proposal.estimatedWeeklyProfitImpact || 0).toFixed(2)}/wk
+                          {currencySymbol}{(proposal.estimatedWeeklyProfitImpact || 0).toFixed(2)}/wk
                         </div>
                         <div className="text-gray-400">
                           Rev: {(proposal.estimatedWeeklyRevenueImpact || 0) >= 0 ? '+' : ''}
-                          £{(proposal.estimatedWeeklyRevenueImpact || 0).toFixed(2)}
+                          {currencySymbol}{(proposal.estimatedWeeklyRevenueImpact || 0).toFixed(2)}
                         </div>
                       </div>
                     </td>
@@ -761,6 +765,7 @@ export default function Proposals() {
           onSubmit={(price, notes) =>
             modifyMutation.mutate({ id: modifyingProposal.proposalId, price, notes })
           }
+          currencySymbol={currencySymbol}
         />
       )}
     </div>

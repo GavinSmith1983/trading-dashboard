@@ -14,7 +14,7 @@ const actionTypes: { value: PricingRuleAction['type']; label: string; descriptio
   { value: 'set_margin', label: 'Set Margin %', description: 'Price to achieve target margin' },
   { value: 'set_markup', label: 'Set Markup', description: 'Cost × multiplier' },
   { value: 'adjust_percent', label: 'Adjust by %', description: 'Increase/decrease by percentage' },
-  { value: 'adjust_fixed', label: 'Adjust by £', description: 'Increase/decrease by amount' },
+  { value: 'adjust_fixed', label: 'Adjust Fixed', description: 'Increase/decrease by fixed amount' },
   { value: 'discount_from_mrp', label: 'Discount from MRP', description: 'Set % below MRP' },
   { value: 'match_mrp', label: 'Match MRP', description: 'Set price to MRP' },
 ];

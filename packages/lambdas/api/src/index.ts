@@ -828,17 +828,21 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
     // Process previous year data if requested
     let previousYearDailySales: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
     let previousYearTotals: { quantity: number; revenue: number; orders: number } | undefined;
+    let previousYearTotalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
     if (includePreviousYear && previousYearOrderLines.length > 0) {
       previousYearDailySales = {};
+      previousYearTotalsByChannel = {};
       const pyOrderIdsByDate: Record<string, Set<string>> = {};
       let pyTotalQuantity = 0;
       let pyTotalRevenue = 0;
       let pyTotalOrders = 0;
       const pyAllOrderIds = new Set<string>();
+      const pyChannelOrderIds: Record<string, Set<string>> = {};
 
       for (const line of previousYearOrderLines) {
         const dateDay = line.orderDateDay || '';
         const orderId = line.orderId || '';
+        const channel = line.channelName || 'Unknown';
 
         // Shift date forward by 1 year to align with current year
         if (dateDay) {
@@ -859,6 +863,20 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
           }
         }
 
+        // Previous year channel aggregation
+        if (!previousYearTotalsByChannel[channel]) {
+          previousYearTotalsByChannel[channel] = { quantity: 0, revenue: 0, orders: 0 };
+          pyChannelOrderIds[channel] = new Set();
+        }
+        previousYearTotalsByChannel[channel].quantity += line.quantity || 0;
+        previousYearTotalsByChannel[channel].revenue += line.lineTotalInclVat || 0;
+
+        const orderKey = `${channel}:${orderId}`;
+        if (!pyChannelOrderIds[channel].has(orderKey)) {
+          pyChannelOrderIds[channel].add(orderKey);
+          previousYearTotalsByChannel[channel].orders++;
+        }
+
         // Previous year totals
         pyTotalQuantity += line.quantity || 0;
         pyTotalRevenue += line.lineTotalInclVat || 0;
@@ -873,6 +891,66 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
         revenue: Math.round(pyTotalRevenue * 100) / 100,
         orders: pyTotalOrders,
       };
+    }
+
+    // Build category breakdown by joining with products
+    const includeCategories = params.includeCategories === 'true';
+    let totalsByCategory: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+    let previousYearTotalsByCategory: Record<string, { quantity: number; revenue: number; orders: number }> | undefined;
+
+    if (includeCategories) {
+      // Get all products to map SKU -> category
+      const products = await db.getAllProducts();
+      const skuToCategory: Record<string, string> = {};
+      for (const product of products) {
+        skuToCategory[product.sku] = product.category || 'Uncategorized';
+      }
+
+      // Current year category aggregation
+      totalsByCategory = {};
+      const categoryOrderIds: Record<string, Set<string>> = {};
+
+      for (const line of orderLines) {
+        const category = skuToCategory[line.sku] || 'Uncategorized';
+        const orderId = line.orderId || '';
+
+        if (!totalsByCategory[category]) {
+          totalsByCategory[category] = { quantity: 0, revenue: 0, orders: 0 };
+          categoryOrderIds[category] = new Set();
+        }
+        totalsByCategory[category].quantity += line.quantity || 0;
+        totalsByCategory[category].revenue += line.lineTotalInclVat || 0;
+
+        const orderKey = `${category}:${orderId}`;
+        if (!categoryOrderIds[category].has(orderKey)) {
+          categoryOrderIds[category].add(orderKey);
+          totalsByCategory[category].orders++;
+        }
+      }
+
+      // Previous year category aggregation
+      if (includePreviousYear && previousYearOrderLines.length > 0) {
+        previousYearTotalsByCategory = {};
+        const pyCategoryOrderIds: Record<string, Set<string>> = {};
+
+        for (const line of previousYearOrderLines) {
+          const category = skuToCategory[line.sku] || 'Uncategorized';
+          const orderId = line.orderId || '';
+
+          if (!previousYearTotalsByCategory[category]) {
+            previousYearTotalsByCategory[category] = { quantity: 0, revenue: 0, orders: 0 };
+            pyCategoryOrderIds[category] = new Set();
+          }
+          previousYearTotalsByCategory[category].quantity += line.quantity || 0;
+          previousYearTotalsByCategory[category].revenue += line.lineTotalInclVat || 0;
+
+          const orderKey = `${category}:${orderId}`;
+          if (!pyCategoryOrderIds[category].has(orderKey)) {
+            pyCategoryOrderIds[category].add(orderKey);
+            previousYearTotalsByCategory[category].orders++;
+          }
+        }
+      }
     }
 
     const result: Record<string, unknown> = {
@@ -900,7 +978,16 @@ async function handleAnalytics(event: APIGatewayProxyEvent): Promise<APIGatewayP
         toDate: previousYearToDateStr,
         dailySales: previousYearDailySales || {},
         totals: previousYearTotals || { quantity: 0, revenue: 0, orders: 0 },
+        totalsByChannel: previousYearTotalsByChannel || {},
       };
+    }
+
+    if (includeCategories) {
+      result.totalsByCategory = totalsByCategory || {};
+      result.categories = Object.keys(totalsByCategory || {}).sort();
+      if (includePreviousYear) {
+        result.previousYearTotalsByCategory = previousYearTotalsByCategory || {};
+      }
     }
 
     return response(200, result);

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { analyticsApi, proposalsApi } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
+import { useAccount } from '../context/AccountContext';
 import StatCard from '../components/StatCard';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
@@ -19,6 +20,7 @@ import ErrorMessage from '../components/ErrorMessage';
 
 export default function Dashboard() {
   const { accountId } = useAccountQuery();
+  const { currencySymbol } = useAccount();
 
   const {
     data: summary,
@@ -138,10 +140,10 @@ export default function Dashboard() {
                       </div>
                       <div className="text-right">
                         <p className="text-sm">
-                          <span className="text-gray-500">£{proposal.currentPrice.toFixed(2)}</span>
+                          <span className="text-gray-500">{currencySymbol}{proposal.currentPrice.toFixed(2)}</span>
                           <span className="mx-2">→</span>
                           <span className="font-medium text-gray-900">
-                            £{proposal.proposedPrice.toFixed(2)}
+                            {currencySymbol}{proposal.proposedPrice.toFixed(2)}
                           </span>
                         </p>
                         <Badge

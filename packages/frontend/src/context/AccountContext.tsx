@@ -8,6 +8,10 @@ export interface Account {
   accountId: string;
   name: string;
   status: 'active' | 'suspended';
+  settings?: {
+    currency?: string;
+    pricingMode?: 'single' | 'multi';
+  };
 }
 
 interface AccountContextType {
@@ -16,6 +20,9 @@ interface AccountContextType {
   isLoading: boolean;
   switchAccount: (accountId: string) => void;
   isSuperAdmin: boolean;
+  currency: string;
+  currencySymbol: string;
+  formatCurrency: (value: number) => string;
 }
 
 const AccountContext = createContext<AccountContextType | undefined>(undefined);
@@ -31,6 +38,13 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   // Check if user is super-admin
   const isSuperAdmin = user?.groups?.includes('super-admin') || false;
+
+  // Currency helpers
+  const currency = currentAccount?.settings?.currency || 'GBP';
+  const currencySymbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '£';
+  const formatCurrency = useCallback((value: number) => {
+    return `${currencySymbol}${value.toFixed(2)}`;
+  }, [currencySymbol]);
 
   // Load accounts when user authenticates
   useEffect(() => {
@@ -64,9 +78,18 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
           if (response.ok) {
             const data = await response.json();
-            const accounts = (data.items || []).filter(
-              (a: Account) => a.status === 'active'
-            );
+            // Map API response to frontend Account type, extracting settings
+            const accounts = (data.items || [])
+              .filter((a: any) => a.status === 'active')
+              .map((a: any) => ({
+                accountId: a.accountId,
+                name: a.name,
+                status: a.status,
+                settings: {
+                  currency: a.settings?.currency || 'GBP',
+                  pricingMode: a.googleSheets?.columnMapping?.pricingMode || 'multi',
+                },
+              })) as Account[];
             setAllowedAccounts(accounts);
 
             // Restore previously selected account or use first one
@@ -149,6 +172,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         isLoading,
         switchAccount,
         isSuperAdmin,
+        currency,
+        currencySymbol,
+        formatCurrency,
       }}
     >
       {children}
