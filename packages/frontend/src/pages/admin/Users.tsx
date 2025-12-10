@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User as UserIcon, Plus, Edit2, Trash2, Shield, Check, X } from 'lucide-react';
+import { User as UserIcon, Plus, Edit2, Trash2, Shield, Check, X, Mail, UserCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usersApi, accountsApi, User, Account } from '../../api';
 import Loading from '../../components/Loading';
@@ -79,7 +79,8 @@ export default function UsersAdmin() {
         // Create new user
         await usersApi.create({
           email: formData.email,
-          name: `${formData.givenName} ${formData.familyName}`,
+          givenName: formData.givenName,
+          familyName: formData.familyName,
           groups: formData.groups,
           allowedAccounts: formData.allowedAccounts,
           defaultAccount: formData.defaultAccount || undefined,
@@ -118,6 +119,31 @@ export default function UsersAdmin() {
       setUsers(response.items || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disable user');
+    }
+  };
+
+  // Handle enable user
+  const handleEnable = async (email: string) => {
+    try {
+      await usersApi.enable(email);
+      const response = await usersApi.list();
+      setUsers(response.items || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to enable user');
+    }
+  };
+
+  // Handle resend invitation
+  const handleResendInvitation = async (email: string) => {
+    if (!confirm('This will enable the user and send them a new invitation email with login details. Continue?')) return;
+
+    try {
+      await usersApi.resendInvitation(email);
+      const response = await usersApi.list();
+      setUsers(response.items || []);
+      alert('Invitation email sent successfully');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send invitation');
     }
   };
 
@@ -481,16 +507,33 @@ export default function UsersAdmin() {
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
                     onClick={() => handleEdit(user)}
-                    className="text-blue-600 hover:text-blue-900 mr-4"
+                    className="text-blue-600 hover:text-blue-900 mr-3"
+                    title="Edit user"
                   >
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  {user.enabled && (
+                  <button
+                    onClick={() => handleResendInvitation(user.email)}
+                    className="text-green-600 hover:text-green-900 mr-3"
+                    title="Resend invitation email"
+                  >
+                    <Mail className="h-4 w-4" />
+                  </button>
+                  {user.enabled ? (
                     <button
                       onClick={() => handleDelete(user.email)}
                       className="text-red-600 hover:text-red-900"
+                      title="Disable user"
                     >
                       <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleEnable(user.email)}
+                      className="text-green-600 hover:text-green-900"
+                      title="Enable user"
+                    >
+                      <UserCheck className="h-4 w-4" />
                     </button>
                   )}
                 </td>

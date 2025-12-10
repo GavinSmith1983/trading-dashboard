@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Package, Layers, PoundSterling, Truck, Calculator, Pencil, Save, X, ShoppingCart, Calendar, Globe, Plus, Trash2, RefreshCw, ExternalLink, AlertCircle, Tag, TrendingUp, TrendingDown, Minus, CheckCircle, XCircle, Clock, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Package, Layers, PoundSterling, Truck, Calculator, Pencil, Save, X, ShoppingCart, Calendar, Globe, Plus, Trash2, RefreshCw, ExternalLink, AlertCircle, Tag, TrendingUp, TrendingDown, Minus, CheckCircle, XCircle, Clock, ArrowRight, History, ChevronDown, ChevronUp, User } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -13,8 +13,9 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Bar,
+  ReferenceLine,
 } from 'recharts';
-import { historyApi, productsApi, competitorsApi, proposalsApi, channelsApi, pricesApi, CompetitorUrl, ChannelSalesData } from '../api';
+import { historyApi, productsApi, competitorsApi, proposalsApi, channelsApi, pricesApi, CompetitorUrl, ChannelSalesData, PriceChangeRecord } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
 import { useAccount } from '../context/AccountContext';
 import type { PriceProposal, Channel } from '../types';
@@ -38,23 +39,126 @@ const TIME_RANGES: TimeRangeOption[] = [
   { label: '18M', days: 548 },
 ];
 
-// Helper to calculate days for dynamic ranges
-function calculateDaysForRange(range: number | 'thisMonth' | 'lastMonth'): number {
-  if (typeof range === 'number') return range;
-
+// Helper to calculate date range for API call
+function getDateRangeForHistory(range: number | 'thisMonth' | 'lastMonth'): { from: string; to: string } {
   const now = new Date();
-  if (range === 'thisMonth') {
-    // Days from start of this month to today
-    return now.getDate();
-  } else if (range === 'lastMonth') {
-    // Days in last month + days so far this month
-    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const diffTime = firstOfThisMonth.getTime() - firstOfLastMonth.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const formatDate = (d: Date) => d.toISOString().substring(0, 10);
+
+  if (typeof range === 'number') {
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - range);
+    return { from: formatDate(fromDate), to: formatDate(now) };
   }
-  return 30;
+
+  if (range === 'thisMonth') {
+    // First day of this month to today
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: formatDate(firstOfMonth), to: formatDate(now) };
+  } else if (range === 'lastMonth') {
+    // First day of last month to last day of last month
+    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0); // Day 0 of this month = last day of previous
+    return { from: formatDate(firstOfLastMonth), to: formatDate(lastOfLastMonth) };
+  }
+
+  // Default: last 30 days
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() - 30);
+  return { from: formatDate(fromDate), to: formatDate(now) };
 }
+
+// Price change annotation type for chart
+interface PriceChangeAnnotation {
+  date: string;
+  channel: string;
+  previousPrice: number;
+  newPrice: number;
+  changedBy: string;
+  reason?: string;
+}
+
+// Custom label component for price change reference lines with tooltip
+const PriceChangeLabel = ({
+  viewBox,
+  annotation,
+  currencySymbol = '£'
+}: {
+  viewBox?: { x?: number; y?: number };
+  annotation: PriceChangeAnnotation;
+  currencySymbol?: string;
+}) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const x = viewBox?.x ?? 0;
+  const priceChange = annotation.newPrice - annotation.previousPrice;
+  const isIncrease = priceChange > 0;
+
+  return (
+    <g>
+      {/* Clickable/hoverable area */}
+      <circle
+        cx={x}
+        cy={15}
+        r={8}
+        fill="#f97316"
+        stroke="#fff"
+        strokeWidth={1.5}
+        style={{ cursor: 'pointer' }}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      />
+      <text
+        x={x}
+        y={19}
+        textAnchor="middle"
+        fill="#fff"
+        fontSize={10}
+        fontWeight={700}
+        style={{ pointerEvents: 'none' }}
+      >
+        {isIncrease ? '↑' : '↓'}
+      </text>
+
+      {/* Tooltip */}
+      {showTooltip && (
+        <foreignObject x={x - 100} y={28} width={200} height={120}>
+          <div
+            style={{
+              background: 'white',
+              border: '1px solid #e5e7eb',
+              borderRadius: '6px',
+              padding: '8px 10px',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+              fontSize: '12px',
+              lineHeight: '1.4',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: '4px', color: '#f97316' }}>
+              Price Change - {annotation.channel}
+            </div>
+            <div style={{ color: '#6b7280' }}>
+              {currencySymbol}{annotation.previousPrice.toFixed(2)} → {currencySymbol}{annotation.newPrice.toFixed(2)}
+              <span style={{
+                marginLeft: '6px',
+                color: isIncrease ? '#22c55e' : '#ef4444',
+                fontWeight: 500
+              }}>
+                ({isIncrease ? '+' : ''}{currencySymbol}{priceChange.toFixed(2)})
+              </span>
+            </div>
+            <div style={{ color: '#9ca3af', marginTop: '4px' }}>
+              By: {annotation.changedBy}
+            </div>
+            {annotation.reason && (
+              <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+                {annotation.reason}
+              </div>
+            )}
+          </div>
+        </foreignObject>
+      )}
+    </g>
+  );
+};
 
 // Channel colors for stacked bar chart - includes variations of channel names
 const CHANNEL_COLORS: Record<string, string> = {
@@ -162,20 +266,12 @@ export default function ProductDetail() {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
   const [selectedTimeRange, setSelectedTimeRange] = useState<number | 'thisMonth' | 'lastMonth'>(180); // Default 6 months
   const [unitPeriod, setUnitPeriod] = useState<'day' | 'week' | 'month'>('day'); // Aggregation period
-
-  // Calculate actual days for date range
-  const actualDays = calculateDaysForRange(selectedTimeRange);
+  const [isPriceHistoryExpanded, setIsPriceHistoryExpanded] = useState(false); // Price history visibility
 
   // Calculate date range based on selected time range
   const dateRange = useMemo(() => {
-    const toDate = new Date();
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - actualDays);
-    return {
-      from: fromDate.toISOString().substring(0, 10),
-      to: toDate.toISOString().substring(0, 10),
-    };
-  }, [actualDays]);
+    return getDateRangeForHistory(selectedTimeRange);
+  }, [selectedTimeRange]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['history', accountId, sku, dateRange.from, dateRange.to],
@@ -189,6 +285,13 @@ export default function ProductDetail() {
   const { data: proposalsData } = useQuery({
     queryKey: ['proposals', 'by-sku', accountId, sku],
     queryFn: () => proposalsApi.list({ search: sku, pageSize: 20 }),
+    enabled: !!sku,
+  });
+
+  // Fetch price change history (always fetch for chart annotations)
+  const { data: priceHistoryData, isLoading: isPriceHistoryLoading } = useQuery({
+    queryKey: ['price-history', accountId, sku],
+    queryFn: () => pricesApi.getHistory(sku!, 100),
     enabled: !!sku,
   });
 
@@ -237,6 +340,7 @@ export default function ProductDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['history', accountId, sku] });
       queryClient.invalidateQueries({ queryKey: ['products', accountId] });
+      queryClient.invalidateQueries({ queryKey: ['price-history', accountId, sku] });
       setIsEditingPrice(false);
       setEditPrice('');
     },
@@ -447,13 +551,77 @@ export default function ProductDetail() {
       });
     });
 
-    // Use the actual days for calculation
-    const days = actualDays;
+    // Calculate actual days from dateRange
+    const fromDate = new Date(dateRange.from);
+    const toDate = new Date(dateRange.to);
+    const days = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
     return {
       avgDailySales: days > 0 ? totalSales / days : 0,
       avgDailyRevenue: days > 0 ? totalRevenue / days : 0,
     };
-  }, [channelSales, actualDays]);
+  }, [channelSales, dateRange]);
+
+  // Filter price changes for chart annotations (within visible date range)
+  // Must be called before early returns to maintain hook order
+  const priceChangeAnnotations = useMemo(() => {
+    if (!priceHistoryData?.items || priceHistoryData.items.length === 0) return [];
+
+    // Get the date range from aggregatedChartData
+    if (aggregatedChartData.length === 0) return [];
+
+    const chartDates = aggregatedChartData.map(d => d.date);
+    const minDate = chartDates[0];
+    const maxDate = chartDates[chartDates.length - 1];
+
+    // Channel display names for annotations
+    const channelNames: Record<string, string> = {
+      amazon: 'Amazon',
+      ebay: 'eBay/OnBuy/Debs',
+      bandq: 'B&Q',
+      manomano: 'ManoMano',
+      shopify: 'Shopify',
+    };
+
+    // Filter and map price changes within the chart date range
+    return priceHistoryData.items
+      .filter(change => {
+        const changeDate = change.changedAt.substring(0, 10); // Extract YYYY-MM-DD
+        return changeDate >= minDate && changeDate <= maxDate;
+      })
+      .map(change => {
+        const changeDate = change.changedAt.substring(0, 10);
+        // For weekly/monthly view, map to the period start date
+        let mappedDate = changeDate;
+        if (unitPeriod === 'week') {
+          const date = new Date(changeDate);
+          const day = date.getUTCDay();
+          const diff = date.getUTCDate() - day + (day === 0 ? -6 : 1);
+          const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), diff));
+          mappedDate = monday.toISOString().substring(0, 10);
+        } else if (unitPeriod === 'month') {
+          const date = new Date(changeDate);
+          mappedDate = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`;
+        }
+
+        // Get channel display name
+        const channelDisplay = change.channelId === 'all'
+          ? 'All'
+          : channelNames[change.channelId] || change.channelId;
+
+        return {
+          date: mappedDate,
+          channel: channelDisplay,
+          previousPrice: change.previousPrice,
+          newPrice: change.newPrice,
+          changedBy: change.changedBy.split('@')[0],
+          reason: change.reason,
+        };
+      })
+      // Deduplicate by date (keep first change per date for cleaner annotations)
+      .filter((change, index, self) =>
+        self.findIndex(c => c.date === change.date) === index
+      );
+  }, [priceHistoryData, aggregatedChartData, unitPeriod]);
 
   // Early returns must come AFTER all hooks
   if (isLoading) {
@@ -482,7 +650,7 @@ export default function ProductDetail() {
   // Get channel prices from product
   const channelPrices = (product as any)?.channelPrices || {};
 
-  // Map channel IDs to display names
+  // Map channel IDs to display names (defined as constant outside useMemo to avoid re-renders)
   // eBay, OnBuy, and Debenhams all use the same price (eBay pricing) so we group them
   const channelDisplayNames: Record<string, string> = {
     amazon: 'Amazon',
@@ -1119,6 +1287,18 @@ export default function ProductDetail() {
                       hide={hiddenLines.has('lowestCompetitor')}
                       connectNulls={false}
                     />
+                    {/* Price change annotations */}
+                    {priceChangeAnnotations.map((annotation, index) => (
+                      <ReferenceLine
+                        key={`price-change-${index}`}
+                        x={annotation.date}
+                        stroke="#f97316"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                        yAxisId="left"
+                        label={<PriceChangeLabel annotation={annotation} currencySymbol={currencySymbol} />}
+                      />
+                    ))}
                   </LineChart>
                 </ResponsiveContainer>
 
@@ -1185,6 +1365,17 @@ export default function ProductDetail() {
                             stackId="sales"
                             fill={getChannelColor(channel, index)}
                             name={`sales_${channel}`}
+                          />
+                        ))}
+                        {/* Price change annotations */}
+                        {priceChangeAnnotations.map((annotation, index) => (
+                          <ReferenceLine
+                            key={`price-change-sales-${index}`}
+                            x={annotation.date}
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            strokeDasharray="4 2"
+                            yAxisId="left"
                           />
                         ))}
                       </ComposedChart>
@@ -1436,6 +1627,149 @@ export default function ProductDetail() {
               </div>
             )}
           </CardContent>
+        </Card>
+      </div>
+
+      {/* Price Change History Section */}
+      <div className="mt-4">
+        <Card>
+          <div
+            className="cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => setIsPriceHistoryExpanded(!isPriceHistoryExpanded)}
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <History className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                    Price Change History
+                  </CardTitle>
+                  {priceHistoryData && (
+                    <span className="text-xs text-gray-400">
+                      {priceHistoryData.count} changes recorded
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button className="p-1 text-gray-400 hover:text-gray-600">
+                {isPriceHistoryExpanded ? (
+                  <ChevronUp className="h-5 w-5" />
+                ) : (
+                  <ChevronDown className="h-5 w-5" />
+                )}
+              </button>
+            </CardHeader>
+          </div>
+          {isPriceHistoryExpanded && (
+            <CardContent className="pt-2">
+              {isPriceHistoryLoading ? (
+                <div className="flex items-center justify-center py-8 text-gray-500">
+                  <RefreshCw className="h-5 w-5 animate-spin mr-2" />
+                  Loading history...
+                </div>
+              ) : !priceHistoryData || priceHistoryData.items.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  <History className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  <p>No price changes recorded yet</p>
+                  <p className="text-sm mt-1">Changes will be tracked from now on</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Date</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Channel</th>
+                        <th className="text-right py-2 px-3 font-medium text-gray-500">Previous</th>
+                        <th className="text-right py-2 px-3 font-medium text-gray-500">New</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Changed By</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Reason</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-500">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {priceHistoryData.items.map((change: PriceChangeRecord, index: number) => {
+                        const changeDate = new Date(change.changedAt);
+                        const priceChange = change.newPrice - change.previousPrice;
+                        const priceChangePercent = change.previousPrice > 0
+                          ? ((priceChange / change.previousPrice) * 100)
+                          : 0;
+                        const isPositive = priceChange > 0;
+
+                        // Reason display mapping
+                        const reasonDisplay: Record<string, { label: string; badge: string }> = {
+                          manual: { label: 'Manual', badge: 'bg-blue-100 text-blue-700' },
+                          proposal_approved: { label: 'Proposal', badge: 'bg-green-100 text-green-700' },
+                          proposal_modified: { label: 'Modified', badge: 'bg-purple-100 text-purple-700' },
+                          bulk_update: { label: 'Bulk', badge: 'bg-amber-100 text-amber-700' },
+                        };
+                        const reason = reasonDisplay[change.reason] || { label: change.reason, badge: 'bg-gray-100 text-gray-700' };
+
+                        // Channel display
+                        const channelDisplay = change.channelId === 'all' ? 'All Channels' :
+                          channelDisplayNames[change.channelId] || change.channelId;
+
+                        return (
+                          <tr
+                            key={`${change.changedAt}-${index}`}
+                            className="border-b border-gray-100 hover:bg-gray-50"
+                          >
+                            <td className="py-2 px-3">
+                              <div className="text-gray-900">
+                                {changeDate.toLocaleDateString('en-GB', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {changeDate.toLocaleTimeString('en-GB', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 text-gray-700">{channelDisplay}</td>
+                            <td className="py-2 px-3 text-right text-gray-500">
+                              {currencySymbol}{change.previousPrice.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="font-semibold text-gray-900">
+                                  {currencySymbol}{change.newPrice.toFixed(2)}
+                                </span>
+                                <span className={`text-xs ${isPositive ? 'text-green-600' : priceChange < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                  {isPositive ? '+' : ''}{priceChangePercent.toFixed(1)}%
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="flex items-center gap-1">
+                                <User className="h-3 w-3 text-gray-400" />
+                                <span className="text-gray-700 truncate max-w-[120px]" title={change.changedBy}>
+                                  {change.changedBy.split('@')[0]}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${reason.badge}`}>
+                                {reason.label}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-gray-500 text-xs max-w-[150px] truncate" title={change.notes}>
+                              {change.notes || '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
       </div>
     </div>

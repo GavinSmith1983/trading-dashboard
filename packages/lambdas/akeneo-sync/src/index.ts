@@ -10,6 +10,8 @@
  * - Conservative 10 requests/second (Akeneo allows 100/s)
  * - Exponential backoff on 429 responses
  * - Batch size limited to avoid Lambda timeout
+ *
+ * Supports optional accountId parameter to sync specific account.
  */
 
 import { ScheduledEvent, Context } from 'aws-lambda';
@@ -23,25 +25,35 @@ import {
 // Environment variables
 const AKENEO_SECRET_ARN = process.env.AKENEO_SECRET_ARN;
 const AKENEO_REFRESH_DAYS = parseInt(process.env.AKENEO_REFRESH_DAYS || '7', 10);
-const MAX_PRODUCTS_PER_RUN = parseInt(process.env.MAX_PRODUCTS_PER_RUN || '500', 10);
-const REQUESTS_PER_SECOND = parseInt(process.env.REQUESTS_PER_SECOND || '10', 10);
+const MAX_PRODUCTS_PER_RUN = parseInt(process.env.MAX_PRODUCTS_PER_RUN || '4000', 10);
+const REQUESTS_PER_SECOND = parseInt(process.env.REQUESTS_PER_SECOND || '50', 10);
+
+interface AkeneoSyncEvent extends Partial<ScheduledEvent> {
+  accountId?: string; // Optional: sync specific account only
+}
 
 interface SyncResult {
   accountId: string;
   totalProducts: number;
   productsNeedingSync: number;
   productsSynced: number;
+  productsMatched: number;
   productsFailed: number;
   durationMs: number;
 }
 
 export async function handler(
-  event: ScheduledEvent,
+  event: AkeneoSyncEvent,
   context: Context
 ): Promise<{ statusCode: number; body: string }> {
   const startTime = Date.now();
-  console.log('[AkeneoSync] Starting scheduled sync...');
+  const targetAccountId = event.accountId;
+
+  console.log('[AkeneoSync] Starting sync...');
   console.log(`[AkeneoSync] Config: refreshDays=${AKENEO_REFRESH_DAYS}, maxPerRun=${MAX_PRODUCTS_PER_RUN}, rps=${REQUESTS_PER_SECOND}`);
+  if (targetAccountId) {
+    console.log(`[AkeneoSync] Target account: ${targetAccountId}`);
+  }
 
   if (!AKENEO_SECRET_ARN) {
     console.log('[AkeneoSync] AKENEO_SECRET_ARN not configured, skipping sync');
@@ -55,11 +67,29 @@ export async function handler(
   const results: SyncResult[] = [];
 
   try {
-    // Get all active accounts
-    const accounts = await db.getActiveAccounts();
-    console.log(`[AkeneoSync] Found ${accounts.length} active accounts`);
+    // Get accounts to process
+    let accounts;
+    if (targetAccountId) {
+      // Single account mode
+      const account = await db.getAccount(targetAccountId);
+      if (!account) {
+        return {
+          statusCode: 404,
+          body: JSON.stringify({ error: `Account ${targetAccountId} not found` }),
+        };
+      }
+      accounts = [account];
+    } else {
+      // All active accounts - sorted by product count (smallest first)
+      accounts = await db.getActiveAccounts();
+      // Sort accounts by name to ensure smaller accounts (like valquest-usa) go first
+      // This helps ensure all accounts get processed within the time limit
+      accounts.sort((a, b) => a.accountId.localeCompare(b.accountId));
+    }
 
-    // Create Akeneo service with conservative rate limiting
+    console.log(`[AkeneoSync] Processing ${accounts.length} account(s): ${accounts.map(a => a.accountId).join(', ')}`);
+
+    // Create Akeneo service with rate limiting
     const akeneo = await createAkeneoServiceFromSecret(AKENEO_SECRET_ARN, {
       requestsPerSecond: REQUESTS_PER_SECOND,
       retryAfterMs: 2000,
@@ -86,6 +116,7 @@ export async function handler(
           totalProducts: 0,
           productsNeedingSync: 0,
           productsSynced: 0,
+          productsMatched: 0,
           productsFailed: 0,
           durationMs: Date.now() - accountStart,
         });
@@ -104,6 +135,7 @@ export async function handler(
       totalAccounts: accounts.length,
       processedAccounts: results.length,
       totalSynced: results.reduce((sum, r) => sum + r.productsSynced, 0),
+      totalMatched: results.reduce((sum, r) => sum + r.productsMatched, 0),
       totalFailed: results.reduce((sum, r) => sum + r.productsFailed, 0),
       durationMs: totalDuration,
       results,
@@ -127,6 +159,9 @@ export async function handler(
   }
 }
 
+// Cache for Akeneo products - fetched once per Lambda invocation
+let akeneoProductsCache: Map<string, AkeneoProductEnrichment> | null = null;
+
 async function syncAccountProducts(
   db: ReturnType<typeof createDynamoDBServiceV2>,
   akeneo: Awaited<ReturnType<typeof createAkeneoServiceFromSecret>>,
@@ -149,50 +184,68 @@ async function syncAccountProducts(
       totalProducts: products.length,
       productsNeedingSync: 0,
       productsSynced: 0,
+      productsMatched: 0,
       productsFailed: 0,
       durationMs: Date.now() - startTime,
     };
+  }
+
+  // Fetch ALL products from Akeneo once (paginated, ~100 per page)
+  // This is more efficient than individual lookups when SKUs might not match exactly
+  if (!akeneoProductsCache) {
+    console.log(`[AkeneoSync] Fetching all products from Akeneo (bulk)...`);
+    akeneoProductsCache = await akeneo.fetchAllProducts((batch, page) => {
+      console.log(`[AkeneoSync] Akeneo page ${page}: ${batch.length} products`);
+      return Promise.resolve();
+    });
+    console.log(`[AkeneoSync] Akeneo total: ${akeneoProductsCache.size} products`);
+  }
+
+  // Build a case-insensitive lookup map for matching
+  const akeneoBySkuLower = new Map<string, AkeneoProductEnrichment>();
+  for (const [sku, product] of akeneoProductsCache) {
+    akeneoBySkuLower.set(sku.toLowerCase(), product);
   }
 
   // Limit batch size to avoid timeout
   const productsToSync = needsSync.slice(0, MAX_PRODUCTS_PER_RUN);
   console.log(`[AkeneoSync] Account ${accountId}: Syncing ${productsToSync.length} products (limited from ${needsSync.length})`);
 
-  // Fetch from Akeneo with progress tracking
-  const skus = productsToSync.map(p => p.sku);
   let synced = 0;
+  let matched = 0;
   let failed = 0;
   const timestamp = new Date().toISOString();
 
-  // Fetch and update products one by one (respects rate limits)
-  const akeneoData = await akeneo.fetchProductsBySKUs(skus, async (completed, total, product) => {
-    // Log progress every 50 products
-    if (completed % 50 === 0 || completed === total) {
-      console.log(`[AkeneoSync] Account ${accountId}: Progress ${completed}/${total}`);
-    }
-  });
-
   // Update products in DynamoDB
-  for (const sku of skus) {
-    const akeneoProduct = akeneoData.get(sku);
+  for (let i = 0; i < productsToSync.length; i++) {
+    const product = productsToSync[i];
+    const sku = product.sku;
+
+    // Try exact match first, then case-insensitive
+    let akeneoProduct = akeneoProductsCache.get(sku) || akeneoBySkuLower.get(sku.toLowerCase());
 
     try {
-      if (akeneoProduct) {
+      if (akeneoProduct && akeneoProduct.family) {
         await db.updateProduct(accountId, sku, {
-          family: akeneoProduct.family || undefined,
+          family: akeneoProduct.family,
           lastSyncedFromAkeneo: timestamp,
         });
-        synced++;
+        matched++;
       } else {
-        // Product not found in Akeneo, still update timestamp to avoid repeated lookups
+        // Product not found in Akeneo or has no family, still update timestamp
         await db.updateProduct(accountId, sku, {
           lastSyncedFromAkeneo: timestamp,
         });
-        synced++;
       }
+      synced++;
     } catch (error) {
       console.error(`[AkeneoSync] Failed to update product ${sku}:`, error);
       failed++;
+    }
+
+    // Log progress every 500 products
+    if ((i + 1) % 500 === 0 || i === productsToSync.length - 1) {
+      console.log(`[AkeneoSync] Account ${accountId}: Progress ${i + 1}/${productsToSync.length} (matched: ${matched})`);
     }
 
     // Check remaining time
@@ -208,6 +261,7 @@ async function syncAccountProducts(
     totalProducts: products.length,
     productsNeedingSync: needsSync.length,
     productsSynced: synced,
+    productsMatched: matched,
     productsFailed: failed,
     durationMs: Date.now() - startTime,
   };

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, PoundSterling, TrendingUp, TrendingDown, Package, Layers } from 'lucide-react';
+import { ShoppingCart, PoundSterling, TrendingUp, TrendingDown, Package, Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { useAccountQuery } from '../hooks/useAccountQuery';
 import { useAccount } from '../context/AccountContext';
 import {
@@ -43,22 +43,32 @@ const TIME_RANGES: TimeRangeOption[] = [
   { label: '18M', days: 548 },
 ];
 
-// Helper to calculate days for dynamic ranges
-function calculateDaysForRange(range: number | 'thisMonth' | 'lastMonth'): number {
-  if (typeof range === 'number') return range;
+// Helper to calculate date range for API call
+function getDateRangeParams(range: number | 'thisMonth' | 'lastMonth'): { days?: number; fromDate?: string; toDate?: string } {
+  if (typeof range === 'number') {
+    return { days: range };
+  }
 
   const now = new Date();
+  const formatDate = (d: Date) => d.toISOString().substring(0, 10);
+
   if (range === 'thisMonth') {
-    // Days from start of this month to today
-    return now.getDate();
+    // First day of this month to today
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return {
+      fromDate: formatDate(firstOfMonth),
+      toDate: formatDate(now),
+    };
   } else if (range === 'lastMonth') {
-    // Days in last month + days so far this month
-    const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // First day of last month to last day of last month
     const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const diffTime = firstOfThisMonth.getTime() - firstOfLastMonth.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const lastOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0); // Day 0 of this month = last day of previous
+    return {
+      fromDate: formatDate(firstOfLastMonth),
+      toDate: formatDate(lastOfLastMonth),
+    };
   }
-  return 30;
+  return { days: 30 };
 }
 
 // Channel colors
@@ -96,16 +106,17 @@ export default function Sales() {
   const [unitPeriod, setUnitPeriod] = useState<'day' | 'week' | 'month'>('day');
   const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(new Set());
   const [hiddenFamilies, setHiddenFamilies] = useState<Set<string>>(new Set());
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'units' | 'revenue'>('revenue');
   const [showPreviousYear, setShowPreviousYear] = useState(false);
   const [showPreviousMonth, setShowPreviousMonth] = useState(false);
 
-  // Calculate actual days for API call
-  const actualDays = calculateDaysForRange(selectedTimeRange);
+  // Calculate date range params for API call
+  const dateParams = getDateRangeParams(selectedTimeRange);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['sales', accountId, selectedTimeRange, showPreviousYear, showPreviousMonth],
-    queryFn: () => analyticsApi.sales(actualDays, true, showPreviousYear, true, showPreviousMonth), // includeDaily=true, includeCategories=true
+    queryFn: () => analyticsApi.sales(dateParams, true, showPreviousYear, true, showPreviousMonth), // includeDaily=true, includeCategories=true
   });
 
   // Get date range from response
@@ -263,13 +274,26 @@ export default function Sales() {
     return FAMILY_COLORS[index % FAMILY_COLORS.length];
   };
 
-  // Get sorted list of families (by total revenue)
+  // Toggle expanded family
+  const toggleExpandedFamily = (family: string) => {
+    setExpandedFamilies(prev => {
+      const next = new Set(prev);
+      if (next.has(family)) {
+        next.delete(family);
+      } else {
+        next.add(family);
+      }
+      return next;
+    });
+  };
+
+  // Get sorted list of families (by total revenue) - now using hierarchical totalsByFamily
   const families = useMemo(() => {
-    if (!data?.totalsByCategory) return [];
-    return Object.entries(data.totalsByCategory)
+    if (!data?.totalsByFamily) return [];
+    return Object.entries(data.totalsByFamily)
       .sort(([, a], [, b]) => b.revenue - a.revenue)
       .map(([family]) => family);
-  }, [data?.totalsByCategory]);
+  }, [data?.totalsByFamily]);
 
   // Build family chart data from dailySalesByFamily (same structure as channel chart)
   // Uses the same date range as the channel chart (from dailySales)
@@ -376,7 +400,7 @@ export default function Sales() {
   const totalsByChannel = data?.totalsByChannel || {};
 
   // Calculate averages
-  const daysInRange = data?.days || actualDays;
+  const daysInRange = data?.days || 30;
   const avgDailyRevenue = daysInRange > 0 ? totals.revenue / daysInRange : 0;
   const avgDailyUnits = daysInRange > 0 ? totals.quantity / daysInRange : 0;
   const avgDailyOrders = daysInRange > 0 ? totals.orders / daysInRange : 0;
@@ -910,13 +934,14 @@ export default function Sales() {
         </Card>
       )}
 
-      {/* Family Breakdown Table */}
-      {data?.totalsByCategory && Object.keys(data.totalsByCategory).length > 0 && (
+      {/* Family Breakdown Table - Expandable with Categories */}
+      {data?.totalsByFamily && Object.keys(data.totalsByFamily).length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
               <Layers className="h-5 w-5 text-gray-500" />
               <CardTitle>Family Breakdown</CardTitle>
+              <span className="text-sm text-gray-500">(click to expand categories)</span>
             </div>
           </CardHeader>
           <CardContent>
@@ -924,7 +949,7 @@ export default function Sales() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-gray-500">Family</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500">Family / Category</th>
                     <th className="text-right py-3 px-4 font-medium text-gray-500">Revenue</th>
                     {(showPreviousYear || showPreviousMonth) && (
                       <>
@@ -942,28 +967,48 @@ export default function Sales() {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(data.totalsByCategory)
+                  {Object.entries(data.totalsByFamily)
                     .sort(([, a], [, b]) => b.revenue - a.revenue)
-                    .map(([category, catData]) => {
-                      const comparisonCatData = showPreviousYear
-                        ? (data?.previousYearTotalsByCategory?.[category] || { quantity: 0, revenue: 0, orders: 0 })
-                        : (data?.previousMonthTotalsByCategory?.[category] || { quantity: 0, revenue: 0, orders: 0 });
-                      const percentOfTotal = totals.revenue > 0 ? (catData.revenue / totals.revenue) * 100 : 0;
-                      const avgOrderValue = catData.orders > 0 ? catData.revenue / catData.orders : 0;
-                      const revenueChange = comparisonCatData.revenue > 0 ? ((catData.revenue - comparisonCatData.revenue) / comparisonCatData.revenue) * 100 : null;
+                    .flatMap(([family, familyData]) => {
+                      const comparisonFamilyData = showPreviousYear
+                        ? (data?.previousYearTotalsByFamily?.[family] || { quantity: 0, revenue: 0, orders: 0, categories: {} })
+                        : (data?.previousMonthTotalsByFamily?.[family] || { quantity: 0, revenue: 0, orders: 0, categories: {} });
+                      const percentOfTotal = totals.revenue > 0 ? (familyData.revenue / totals.revenue) * 100 : 0;
+                      const avgOrderValue = familyData.orders > 0 ? familyData.revenue / familyData.orders : 0;
+                      const revenueChange = comparisonFamilyData.revenue > 0 ? ((familyData.revenue - comparisonFamilyData.revenue) / comparisonFamilyData.revenue) * 100 : null;
+                      const isExpanded = expandedFamilies.has(family);
+                      const hasCategories = familyData.categories && Object.keys(familyData.categories).length > 0;
 
-                      return (
-                        <tr key={category} className="border-b hover:bg-gray-50">
+                      const rows = [
+                        // Family row
+                        <tr
+                          key={family}
+                          className={`border-b hover:bg-gray-50 ${hasCategories ? 'cursor-pointer' : ''}`}
+                          onClick={() => hasCategories && toggleExpandedFamily(family)}
+                        >
                           <td className="py-3 px-4">
-                            <span className="font-medium">{category}</span>
+                            <div className="flex items-center gap-2">
+                              {hasCategories && (
+                                isExpanded
+                                  ? <ChevronDown className="h-4 w-4 text-gray-400" />
+                                  : <ChevronRight className="h-4 w-4 text-gray-400" />
+                              )}
+                              {!hasCategories && <span className="w-4" />}
+                              <span className="font-medium">{family}</span>
+                              {hasCategories && (
+                                <span className="text-xs text-gray-400">
+                                  ({Object.keys(familyData.categories).length} categories)
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="text-right py-3 px-4 font-medium">
-                            <Revenue value={catData.revenue} symbol={currencySymbol} />
+                            <Revenue value={familyData.revenue} symbol={currencySymbol} />
                           </td>
                           {(showPreviousYear || showPreviousMonth) && (
                             <>
                               <td className="text-right py-3 px-4 text-gray-500">
-                                {comparisonCatData.revenue > 0 ? <Revenue value={comparisonCatData.revenue} symbol={currencySymbol} /> : '-'}
+                                {comparisonFamilyData.revenue > 0 ? <Revenue value={comparisonFamilyData.revenue} symbol={currencySymbol} /> : '-'}
                               </td>
                               <td className={`text-right py-3 px-4 font-medium ${
                                 revenueChange === null ? 'text-gray-400' :
@@ -981,22 +1026,76 @@ export default function Sales() {
                           <td className="text-right py-3 px-4 text-gray-500">
                             {percentOfTotal.toFixed(1)}%
                           </td>
-                          <td className="text-right py-3 px-4">{catData.quantity.toLocaleString()}</td>
+                          <td className="text-right py-3 px-4">{familyData.quantity.toLocaleString()}</td>
                           {(showPreviousYear || showPreviousMonth) && (
                             <td className="text-right py-3 px-4 text-gray-500">
-                              {comparisonCatData.quantity > 0 ? comparisonCatData.quantity.toLocaleString() : '-'}
+                              {comparisonFamilyData.quantity > 0 ? comparisonFamilyData.quantity.toLocaleString() : '-'}
                             </td>
                           )}
-                          <td className="text-right py-3 px-4">{catData.orders.toLocaleString()}</td>
+                          <td className="text-right py-3 px-4">{familyData.orders.toLocaleString()}</td>
                           <td className="text-right py-3 px-4">{currencySymbol}{avgOrderValue.toFixed(2)}</td>
                         </tr>
-                      );
+                      ];
+
+                      // Category rows (only if expanded)
+                      if (isExpanded && hasCategories) {
+                        const categoryRows = Object.entries(familyData.categories)
+                          .sort(([, a], [, b]) => b.revenue - a.revenue)
+                          .map(([category, catData]) => {
+                            const comparisonCatData = (comparisonFamilyData as any)?.categories?.[category] || { quantity: 0, revenue: 0, orders: 0 };
+                            const catPercentOfFamily = familyData.revenue > 0 ? (catData.revenue / familyData.revenue) * 100 : 0;
+                            const catAvgOrderValue = catData.orders > 0 ? catData.revenue / catData.orders : 0;
+                            const catRevenueChange = comparisonCatData.revenue > 0 ? ((catData.revenue - comparisonCatData.revenue) / comparisonCatData.revenue) * 100 : null;
+
+                            return (
+                              <tr key={`${family}-${category}`} className="border-b bg-gray-50/50 hover:bg-gray-100">
+                                <td className="py-2 px-4 pl-12">
+                                  <span className="text-sm text-gray-600">{category}</span>
+                                </td>
+                                <td className="text-right py-2 px-4 text-sm">
+                                  <Revenue value={catData.revenue} symbol={currencySymbol} />
+                                </td>
+                                {(showPreviousYear || showPreviousMonth) && (
+                                  <>
+                                    <td className="text-right py-2 px-4 text-sm text-gray-500">
+                                      {comparisonCatData.revenue > 0 ? <Revenue value={comparisonCatData.revenue} symbol={currencySymbol} /> : '-'}
+                                    </td>
+                                    <td className={`text-right py-2 px-4 text-sm ${
+                                      catRevenueChange === null ? 'text-gray-400' :
+                                      catRevenueChange >= 0 ? 'text-green-600' : 'text-red-600'
+                                    }`}>
+                                      {catRevenueChange !== null ? (
+                                        <span className="flex items-center justify-end gap-1">
+                                          {catRevenueChange >= 0 ? '+' : ''}{catRevenueChange.toFixed(1)}%
+                                        </span>
+                                      ) : '-'}
+                                    </td>
+                                  </>
+                                )}
+                                <td className="text-right py-2 px-4 text-sm text-gray-500">
+                                  {catPercentOfFamily.toFixed(1)}%
+                                </td>
+                                <td className="text-right py-2 px-4 text-sm">{catData.quantity.toLocaleString()}</td>
+                                {(showPreviousYear || showPreviousMonth) && (
+                                  <td className="text-right py-2 px-4 text-sm text-gray-500">
+                                    {comparisonCatData.quantity > 0 ? comparisonCatData.quantity.toLocaleString() : '-'}
+                                  </td>
+                                )}
+                                <td className="text-right py-2 px-4 text-sm">{catData.orders.toLocaleString()}</td>
+                                <td className="text-right py-2 px-4 text-sm">{currencySymbol}{catAvgOrderValue.toFixed(2)}</td>
+                              </tr>
+                            );
+                          });
+                        rows.push(...categoryRows);
+                      }
+
+                      return rows;
                     })}
                   {/* Totals row */}
                   {(() => {
                     const comparisonTotals = showPreviousYear ? data?.previousYear?.totals : data?.previousMonth?.totals;
                     return (
-                      <tr className="bg-gray-50 font-semibold">
+                      <tr className="bg-gray-100 font-semibold">
                         <td className="py-3 px-4">Total</td>
                         <td className="text-right py-3 px-4"><Revenue value={totals.revenue} symbol={currencySymbol} /></td>
                         {(showPreviousYear || showPreviousMonth) && (

@@ -22,6 +22,7 @@ import {
   CarrierCost,
   SkuHistoryRecord,
   Account,
+  PriceChangeRecord,
 } from '../types';
 
 /**
@@ -39,6 +40,7 @@ export class DynamoDBServiceV2 {
   private orderLinesTable: string;
   private carrierCostsTable: string;
   private skuHistoryTable: string;
+  private priceChangesTable: string;
 
   constructor(config: {
     accountsTable: string;
@@ -50,6 +52,7 @@ export class DynamoDBServiceV2 {
     orderLinesTable?: string;
     carrierCostsTable?: string;
     skuHistoryTable?: string;
+    priceChangesTable?: string;
   }) {
     const client = new DynamoDBClient({});
     this.docClient = DynamoDBDocumentClient.from(client, {
@@ -65,6 +68,7 @@ export class DynamoDBServiceV2 {
     this.orderLinesTable = config.orderLinesTable || 'repricing-v2-order-lines';
     this.carrierCostsTable = config.carrierCostsTable || 'repricing-v2-carrier-costs';
     this.skuHistoryTable = config.skuHistoryTable || 'repricing-v2-sku-history';
+    this.priceChangesTable = config.priceChangesTable || 'repricing-v2-price-changes';
   }
 
   // ============ Accounts ============
@@ -590,6 +594,71 @@ export class DynamoDBServiceV2 {
     return orders;
   }
 
+  async updateOrderDelivery(
+    accountId: string,
+    orderId: string,
+    deliveryInfo: {
+      deliveryCarrier: string;
+      deliveryCarrierRaw: string;
+      deliveryParcels: number;
+    }
+  ): Promise<void> {
+    await this.docClient.send(
+      new UpdateCommand({
+        TableName: this.ordersTable,
+        Key: { accountId, orderId },
+        UpdateExpression: 'SET deliveryCarrier = :carrier, deliveryCarrierRaw = :carrierRaw, deliveryParcels = :parcels, deliveryImportedAt = :importedAt',
+        ExpressionAttributeValues: {
+          ':carrier': deliveryInfo.deliveryCarrier,
+          ':carrierRaw': deliveryInfo.deliveryCarrierRaw,
+          ':parcels': deliveryInfo.deliveryParcels,
+          ':importedAt': new Date().toISOString(),
+        },
+      })
+    );
+  }
+
+  async getOrdersWithDeliveryData(accountId: string): Promise<Order[]> {
+    const allOrders: Order[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new QueryCommand({
+          TableName: this.ordersTable,
+          KeyConditionExpression: 'accountId = :accountId',
+          FilterExpression: 'attribute_exists(deliveryCarrier) AND attribute_exists(deliveryParcels)',
+          ExpressionAttributeValues: {
+            ':accountId': accountId,
+          },
+          ExclusiveStartKey: lastKey,
+        })
+      );
+
+      allOrders.push(...((result.Items as Order[]) || []));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return allOrders;
+  }
+
+  async getOrderLinesByOrderId(accountId: string, orderId: string): Promise<OrderLineRecord[]> {
+    const result = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.orderLinesTable,
+        IndexName: 'by-account-sku',
+        KeyConditionExpression: 'accountId = :accountId',
+        FilterExpression: 'orderId = :orderId',
+        ExpressionAttributeValues: {
+          ':accountId': accountId,
+          ':orderId': orderId,
+        },
+      })
+    );
+
+    return (result.Items as OrderLineRecord[]) || [];
+  }
+
   // ============ Order Lines ============
 
   async batchPutOrderLines(accountId: string, lines: OrderLineRecord[]): Promise<void> {
@@ -754,6 +823,99 @@ export class DynamoDBServiceV2 {
     return salesMap;
   }
 
+  // ============ Price Changes (Audit Log) ============
+
+  /**
+   * Log a price change for audit trail
+   */
+  async logPriceChange(
+    accountId: string,
+    change: Omit<PriceChangeRecord, 'accountId'>
+  ): Promise<void> {
+    await this.docClient.send(
+      new PutCommand({
+        TableName: this.priceChangesTable,
+        Item: {
+          ...change,
+          accountId,
+          skuTimestamp: `${change.sku}#${change.changedAt}`,
+        },
+      })
+    );
+  }
+
+  /**
+   * Get price change history for a specific SKU
+   */
+  async getPriceHistory(
+    accountId: string,
+    sku: string,
+    limit: number = 50
+  ): Promise<PriceChangeRecord[]> {
+    const result = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.priceChangesTable,
+        KeyConditionExpression: 'accountId = :accountId AND begins_with(skuTimestamp, :skuPrefix)',
+        ExpressionAttributeValues: {
+          ':accountId': accountId,
+          ':skuPrefix': `${sku}#`,
+        },
+        ScanIndexForward: false, // Most recent first
+        Limit: limit,
+      })
+    );
+
+    return (result.Items as PriceChangeRecord[]) || [];
+  }
+
+  /**
+   * Get recent price changes by a specific user
+   */
+  async getPriceChangesByUser(
+    accountId: string,
+    userEmail: string,
+    limit: number = 50
+  ): Promise<PriceChangeRecord[]> {
+    const result = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.priceChangesTable,
+        IndexName: 'by-account-user',
+        KeyConditionExpression: 'accountId = :accountId AND changedBy = :userEmail',
+        ExpressionAttributeValues: {
+          ':accountId': accountId,
+          ':userEmail': userEmail,
+        },
+        ScanIndexForward: false, // Most recent first
+        Limit: limit,
+      })
+    );
+
+    return (result.Items as PriceChangeRecord[]) || [];
+  }
+
+  /**
+   * Get recent price changes across all SKUs
+   */
+  async getRecentPriceChanges(
+    accountId: string,
+    limit: number = 100
+  ): Promise<PriceChangeRecord[]> {
+    const result = await this.docClient.send(
+      new QueryCommand({
+        TableName: this.priceChangesTable,
+        IndexName: 'by-account-date',
+        KeyConditionExpression: 'accountId = :accountId',
+        ExpressionAttributeValues: {
+          ':accountId': accountId,
+        },
+        ScanIndexForward: false, // Most recent first
+        Limit: limit,
+      })
+    );
+
+    return (result.Items as PriceChangeRecord[]) || [];
+  }
+
   // ============ Utilities ============
 
   private chunkArray<T>(array: T[], size: number): T[][] {
@@ -779,5 +941,6 @@ export function createDynamoDBServiceV2(): DynamoDBServiceV2 {
     orderLinesTable: process.env.ORDER_LINES_TABLE || 'repricing-v2-order-lines',
     carrierCostsTable: process.env.CARRIER_COSTS_TABLE || 'repricing-v2-carrier-costs',
     skuHistoryTable: process.env.SKU_HISTORY_TABLE || 'repricing-v2-sku-history',
+    priceChangesTable: process.env.PRICE_CHANGES_TABLE || 'repricing-v2-price-changes',
   });
 }

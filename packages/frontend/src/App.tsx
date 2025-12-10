@@ -10,6 +10,7 @@ import Insights from './pages/Insights';
 import Proposals from './pages/Proposals';
 import Products from './pages/Products';
 import ProductDetail from './pages/ProductDetail';
+import PriceChanges from './pages/PriceChanges';
 import Channels from './pages/Channels';
 import DeliveryCosts from './pages/DeliveryCosts';
 import Rules from './pages/Rules';
@@ -38,6 +39,7 @@ function App() {
               <Route path="insights" element={<Insights />} />
               <Route path="proposals" element={<Proposals />} />
               <Route path="products" element={<Products />} />
+              <Route path="products/price-changes" element={<PriceChanges />} />
               <Route path="products/:sku" element={<ProductDetail />} />
               <Route path="channels" element={<Channels />} />
               <Route path="delivery-costs" element={<DeliveryCosts />} />

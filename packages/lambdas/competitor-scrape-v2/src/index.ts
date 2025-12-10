@@ -1,9 +1,15 @@
 import { ScheduledEvent, Context } from 'aws-lambda';
-import { createDynamoDBServiceV2, Account, Product } from '@repricing/core';
+import {
+  createDynamoDBServiceV2,
+  scrapeProductCompetitors,
+  Account,
+  Product,
+} from '@repricing/core';
 
 /**
  * V2 Competitor Scrape Lambda - Multi-tenant
  * Loops through all active accounts and scrapes competitor prices for their products
+ * Uses the same scraping logic as V1 with site-specific patterns
  */
 export async function handler(event: ScheduledEvent, context: Context): Promise<void> {
   console.log('V2 Competitor Scrape starting', { requestId: context.awsRequestId });
@@ -70,119 +76,76 @@ async function scrapeCompetitorsForAccount(
   }
 
   let scrapedCount = 0;
+  const errors: string[] = [];
 
-  // Process each product
-  for (const product of productsWithUrls) {
-    try {
-      const floorPrice = await scrapeProductCompetitors(product);
+  // Process products in batches to avoid overwhelming servers
+  const batchSize = 5;
+  for (let i = 0; i < productsWithUrls.length; i += batchSize) {
+    const batch = productsWithUrls.slice(i, i + batchSize);
 
-      if (floorPrice !== null && floorPrice !== product.competitorFloorPrice) {
-        // Update product with new floor price
-        await db.putProduct(accountId, {
-          ...product,
-          competitorFloorPrice: floorPrice,
-          competitorPricesLastUpdated: new Date().toISOString(),
-        });
+    // Process batch in parallel
+    const results = await Promise.all(
+      batch.map(async (product) => {
+        try {
+          console.log(`[${accountId}] Scraping competitors for ${product.sku}...`);
+          const result = await scrapeProductCompetitors(product);
+
+          // Update product with new competitor data
+          const updatedProduct: Product = {
+            ...product,
+            competitorUrls: result.updatedUrls,
+            competitorFloorPrice: result.lowestPrice ?? undefined,
+            competitorPricesLastUpdated: new Date().toISOString(),
+          };
+
+          await db.putProduct(accountId, updatedProduct);
+
+          if (result.errors.length > 0) {
+            errors.push(`${product.sku}: ${result.errors.join('; ')}`);
+          }
+
+          const urlsWithPrices = result.updatedUrls.filter(u => u.lastPrice !== undefined).length;
+          console.log(
+            `[${accountId}] ${product.sku}: ${urlsWithPrices}/${result.updatedUrls.length} URLs scraped, ` +
+            `floor price: ${result.lowestPrice !== null ? `£${result.lowestPrice.toFixed(2)}` : 'N/A'}`
+          );
+
+          return {
+            sku: product.sku,
+            success: result.lowestPrice !== null,
+            lowestPrice: result.lowestPrice,
+            errors: result.errors,
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          errors.push(`${product.sku}: ${message}`);
+          console.error(`[${accountId}] Failed to scrape ${product.sku}:`, error);
+          return {
+            sku: product.sku,
+            success: false,
+            lowestPrice: null,
+            errors: [message],
+          };
+        }
+      })
+    );
+
+    // Count successes
+    for (const result of results) {
+      if (result.success) {
         scrapedCount++;
-
-        console.log(
-          `[${accountId}] ${product.sku}: floor price updated to ${floorPrice.toFixed(2)}`
-        );
       }
-    } catch (error) {
-      console.warn(`[${accountId}] Failed to scrape ${product.sku}:`, error);
     }
+
+    // Small delay between batches to be respectful to competitor servers
+    if (i + batchSize < productsWithUrls.length) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+
+  if (errors.length > 0) {
+    console.log(`[${accountId}] Scrape errors (first 10):`, errors.slice(0, 10));
   }
 
   return scrapedCount;
-}
-
-/**
- * Scrape competitor prices for a single product
- * Returns the lowest (floor) price found
- */
-async function scrapeProductCompetitors(product: Product): Promise<number | null> {
-  if (!product.competitorUrls || product.competitorUrls.length === 0) {
-    return null;
-  }
-
-  const prices: number[] = [];
-
-  for (const urlEntry of product.competitorUrls) {
-    const url = typeof urlEntry === 'string' ? urlEntry : urlEntry.url;
-
-    try {
-      const price = await scrapePrice(url);
-      if (price !== null && price > 0) {
-        prices.push(price);
-      }
-    } catch (error) {
-      console.warn(`Failed to scrape URL ${url}:`, error);
-    }
-  }
-
-  if (prices.length === 0) {
-    return null;
-  }
-
-  // Return the minimum price (floor)
-  return Math.min(...prices);
-}
-
-/**
- * Scrape price from a URL
- * This is a placeholder - in production, you'd use puppeteer or similar
- */
-async function scrapePrice(url: string): Promise<number | null> {
-  try {
-    // Use a simple fetch with timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const html = await response.text();
-
-    // Try to extract price using common patterns
-    const pricePatterns = [
-      /£(\d+(?:\.\d{2})?)/g,
-      /GBP\s*(\d+(?:\.\d{2})?)/gi,
-      /"price":\s*"?(\d+(?:\.\d{2})?)"/gi,
-      /data-price="(\d+(?:\.\d{2})?)"/gi,
-    ];
-
-    const foundPrices: number[] = [];
-
-    for (const pattern of pricePatterns) {
-      let match;
-      while ((match = pattern.exec(html)) !== null) {
-        const price = parseFloat(match[1]);
-        if (price > 0 && price < 10000) {
-          // Sanity check
-          foundPrices.push(price);
-        }
-      }
-    }
-
-    if (foundPrices.length === 0) {
-      return null;
-    }
-
-    // Return the most common price (mode) or median
-    return foundPrices.sort((a, b) => a - b)[Math.floor(foundPrices.length / 2)];
-  } catch (error) {
-    return null;
-  }
 }

@@ -522,6 +522,7 @@ async function recordDailyHistory(
     stockLevel: product.stockLevel,
     dailySales: product.salesLast7Days ? Math.round(product.salesLast7Days / 7) : 0,
     dailyRevenue: 0, // Calculated separately from orders
+    lowestCompetitorPrice: product.competitorFloorPrice,
     recordedAt: timestamp,
   }));
 

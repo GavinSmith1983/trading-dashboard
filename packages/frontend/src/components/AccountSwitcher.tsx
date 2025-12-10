@@ -58,7 +58,7 @@ export default function AccountSwitcher() {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-1 right-0 z-50 min-w-[200px] bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden">
+        <div className="absolute top-full mt-1 left-0 z-50 min-w-[200px] bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden">
           <div className="py-1">
             {allowedAccounts.map((account) => (
               <button

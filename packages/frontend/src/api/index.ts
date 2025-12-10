@@ -191,6 +191,25 @@ export interface SalesResponse {
   dailySalesByFamily?: Record<string, Record<string, { quantity: number; revenue: number }>>;
   previousYearTotalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
   previousMonthTotalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
+  // Family breakdown with nested categories
+  totalsByFamily?: Record<string, {
+    quantity: number;
+    revenue: number;
+    orders: number;
+    categories: Record<string, { quantity: number; revenue: number; orders: number }>;
+  }>;
+  previousYearTotalsByFamily?: Record<string, {
+    quantity: number;
+    revenue: number;
+    orders: number;
+    categories: Record<string, { quantity: number; revenue: number; orders: number }>;
+  }>;
+  previousMonthTotalsByFamily?: Record<string, {
+    quantity: number;
+    revenue: number;
+    orders: number;
+    categories: Record<string, { quantity: number; revenue: number; orders: number }>;
+  }>;
 }
 
 export const analyticsApi = {
@@ -199,8 +218,23 @@ export const analyticsApi = {
   margins: () =>
     api.get<{ marginBands: Record<string, number>; total: number }>('/analytics/margins'),
 
-  sales: (days: number = 30, includeDaily: boolean = false, includePreviousYear: boolean = false, includeCategories: boolean = false, includePreviousMonth: boolean = false) =>
-    api.get<SalesResponse>(`/analytics/sales?days=${days}${includeDaily ? '&includeDaily=true' : ''}${includePreviousYear ? '&includePreviousYear=true' : ''}${includeCategories ? '&includeCategories=true' : ''}${includePreviousMonth ? '&includePreviousMonth=true' : ''}`),
+  sales: (
+    params: { days?: number; fromDate?: string; toDate?: string },
+    includeDaily: boolean = false,
+    includePreviousYear: boolean = false,
+    includeCategories: boolean = false,
+    includePreviousMonth: boolean = false
+  ) => {
+    const queryParts: string[] = [];
+    if (params.fromDate) queryParts.push(`fromDate=${params.fromDate}`);
+    if (params.toDate) queryParts.push(`toDate=${params.toDate}`);
+    if (params.days && !params.fromDate) queryParts.push(`days=${params.days}`);
+    if (includeDaily) queryParts.push('includeDaily=true');
+    if (includePreviousYear) queryParts.push('includePreviousYear=true');
+    if (includeCategories) queryParts.push('includeCategories=true');
+    if (includePreviousMonth) queryParts.push('includePreviousMonth=true');
+    return api.get<SalesResponse>(`/analytics/sales?${queryParts.join('&')}`);
+  },
 
   insights: () => api.get<InsightsResponse>('/analytics/insights'),
 };
@@ -359,9 +393,42 @@ export interface PriceUpdateResult {
   price: number;
 }
 
+// Price Change Audit types
+export type PriceChangeReason =
+  | 'manual'           // User manually edited price
+  | 'proposal_approved' // Price approved from proposal
+  | 'proposal_modified' // Price modified during approval
+  | 'bulk_update';      // Bulk approval operation
+
+export interface PriceChangeRecord {
+  accountId: string;
+  sku: string;
+  channelId: string;           // Channel affected (or "all" for average price)
+  previousPrice: number;
+  newPrice: number;
+  changedBy: string;           // User email
+  changedAt: string;           // ISO timestamp
+  reason: PriceChangeReason;
+  source: string;              // "ProductDetail", "Proposals", "API"
+  notes?: string;              // Optional user notes
+  proposalId?: string;         // Reference to proposal if applicable
+}
+
+export interface PriceChangeHistoryResponse {
+  items: PriceChangeRecord[];
+  count: number;
+  sku?: string;
+}
+
 export const pricesApi = {
   updateChannelPrice: (sku: string, channelId: string, price: number) =>
     api.put<PriceUpdateResult>(`/prices/${encodeURIComponent(sku)}`, { channelId, price }),
+
+  getRecentChanges: (limit: number = 100) =>
+    api.get<PriceChangeHistoryResponse>(`/prices/changes?limit=${limit}`),
+
+  getHistory: (sku: string, limit: number = 50) =>
+    api.get<PriceChangeHistoryResponse>(`/prices/history/${encodeURIComponent(sku)}?limit=${limit}`),
 };
 
 // V2: Accounts API (Super-admin only)
@@ -432,7 +499,8 @@ export interface User {
 
 export interface CreateUserRequest {
   email: string;
-  name: string;
+  givenName: string;
+  familyName: string;
   groups: string[];
   allowedAccounts: string[];
   defaultAccount?: string;
@@ -459,6 +527,12 @@ export const usersApi = {
 
   delete: (userId: string) =>
     api.delete(`/users/${encodeURIComponent(userId)}`),
+
+  enable: (userId: string) =>
+    api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/enable`),
+
+  resendInvitation: (userId: string) =>
+    api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/resend-invitation`),
 
   resetPassword: (userId: string) =>
     api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/reset-password`),

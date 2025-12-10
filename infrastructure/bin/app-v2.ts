@@ -51,6 +51,7 @@ const lambdaStack = new LambdaStackV2(app, 'RepricingV2LambdaStack', {
   orderLinesTable: databaseStack.orderLinesTable,
   carrierCostsTable: databaseStack.carrierCostsTable,
   skuHistoryTable: databaseStack.skuHistoryTable,
+  priceChangesTable: databaseStack.priceChangesTable,
   userPool: authStack.userPool,
 });
 

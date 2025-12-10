@@ -19,6 +19,7 @@ interface LambdaStackV2Props extends cdk.StackProps {
   orderLinesTable: dynamodb.Table;
   carrierCostsTable: dynamodb.Table;
   skuHistoryTable: dynamodb.Table;
+  priceChangesTable: dynamodb.Table;
   userPool: cognito.UserPool;
 }
 
@@ -52,6 +53,7 @@ export class LambdaStackV2 extends cdk.Stack {
       ORDER_LINES_TABLE: props.orderLinesTable.tableName,
       CARRIER_COSTS_TABLE: props.carrierCostsTable.tableName,
       SKU_HISTORY_TABLE: props.skuHistoryTable.tableName,
+      PRICE_CHANGES_TABLE: props.priceChangesTable.tableName,
       // Multi-tenant mode flag
       MULTI_TENANT: 'true',
       // Cognito for user management
@@ -168,8 +170,8 @@ export class LambdaStackV2 extends cdk.Stack {
         ...commonEnv,
         AKENEO_SECRET_ARN: akeneoSecretArn,
         AKENEO_REFRESH_DAYS: '7',
-        MAX_PRODUCTS_PER_RUN: '500',
-        REQUESTS_PER_SECOND: '10', // Conservative rate limit
+        MAX_PRODUCTS_PER_RUN: '4000', // Process more per run (Akeneo allows 100 req/s)
+        REQUESTS_PER_SECOND: '50', // 50 req/s (Akeneo allows 100/s, leaving headroom)
       },
       bundling: bundlingOptions,
       projectRoot: path.join(__dirname, '../../..'),
@@ -197,6 +199,7 @@ export class LambdaStackV2 extends cdk.Stack {
       props.orderLinesTable,
       props.carrierCostsTable,
       props.skuHistoryTable,
+      props.priceChangesTable,
     ];
 
     for (const fn of allLambdas) {
@@ -226,6 +229,9 @@ export class LambdaStackV2 extends cdk.Stack {
         actions: [
           'cognito-idp:AdminCreateUser',
           'cognito-idp:AdminDeleteUser',
+          'cognito-idp:AdminDisableUser',
+          'cognito-idp:AdminEnableUser',
+          'cognito-idp:AdminSetUserPassword',
           'cognito-idp:AdminUpdateUserAttributes',
           'cognito-idp:AdminAddUserToGroup',
           'cognito-idp:AdminRemoveUserFromGroup',

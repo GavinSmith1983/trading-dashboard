@@ -14,6 +14,9 @@ export class AuthStackV2 extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // Dashboard URL for email templates
+    const dashboardUrl = 'https://d1stq5bxiu9ds3.cloudfront.net';
+
     // Create Cognito User Pool for V2
     this.userPool = new cognito.UserPool(this, 'RepricingV2UserPool', {
       userPoolName: 'repricing-v2-users',
@@ -24,6 +27,26 @@ export class AuthStackV2 extends cdk.Stack {
       },
       autoVerify: {
         email: true,
+      },
+      // Custom email templates
+      userInvitation: {
+        emailSubject: 'Welcome to Trading Dashboard - Your Login Details',
+        emailBody: `Hello,
+
+You have been invited to the Trading Dashboard.
+
+Your login details:
+Username: {username}
+Temporary Password: {####}
+
+Please sign in at: ${dashboardUrl}
+
+You will be required to change your password on first login.
+
+If you have any questions, please contact your administrator.
+
+Best regards,
+Trading Dashboard Team`,
       },
       standardAttributes: {
         email: {

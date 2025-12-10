@@ -106,40 +106,52 @@ export function AccountProvider({ children }: { children: ReactNode }) {
             }
           }
         } else {
-          // Parse allowed accounts from JWT (custom:allowedAccounts)
-          // The token payload contains this as a JSON string
+          // Non-super-admin: fetch allowed accounts from API
+          // The API now returns only accounts the user has access to
           const payload = JSON.parse(atob(token.split('.')[1]));
-          const allowedAccountIds: string[] = JSON.parse(
-            payload['custom:allowedAccounts'] || '[]'
-          );
           const defaultAccountId = payload['custom:defaultAccount'];
 
-          // For non-super-admin, we need to fetch account details
-          // In a real app, you might have a separate endpoint for this
-          // For now, create simple account objects from IDs
-          const accounts: Account[] = allowedAccountIds.map((id) => ({
-            accountId: id,
-            name: formatAccountName(id),
-            status: 'active' as const,
-          }));
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const response = await fetch(`${apiUrl}/accounts`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
 
-          setAllowedAccounts(accounts);
+          if (response.ok) {
+            const data = await response.json();
+            // Map API response to frontend Account type
+            const accounts = (data.items || [])
+              .filter((a: any) => a.status === 'active')
+              .map((a: any) => ({
+                accountId: a.accountId,
+                name: a.name,
+                status: a.status,
+                settings: {
+                  currency: a.settings?.currency || 'GBP',
+                  pricingMode: a.settings?.pricingMode || a.googleSheets?.columnMapping?.pricingMode || 'multi',
+                },
+              })) as Account[];
 
-          // Restore or use default account
-          const savedAccountId = localStorage.getItem(STORAGE_KEY);
-          let selectedAccount: Account | undefined;
+            setAllowedAccounts(accounts);
 
-          if (savedAccountId && allowedAccountIds.includes(savedAccountId)) {
-            selectedAccount = accounts.find((a) => a.accountId === savedAccountId);
-          } else if (defaultAccountId && allowedAccountIds.includes(defaultAccountId)) {
-            selectedAccount = accounts.find((a) => a.accountId === defaultAccountId);
-          } else if (accounts.length > 0) {
-            selectedAccount = accounts[0];
-          }
+            // Restore or use default account
+            const savedAccountId = localStorage.getItem(STORAGE_KEY);
+            let selectedAccount: Account | undefined;
 
-          if (selectedAccount) {
-            setCurrentAccount(selectedAccount);
-            localStorage.setItem(STORAGE_KEY, selectedAccount.accountId);
+            const accountIds = accounts.map((a) => a.accountId);
+            if (savedAccountId && accountIds.includes(savedAccountId)) {
+              selectedAccount = accounts.find((a) => a.accountId === savedAccountId);
+            } else if (defaultAccountId && accountIds.includes(defaultAccountId)) {
+              selectedAccount = accounts.find((a) => a.accountId === defaultAccountId);
+            } else if (accounts.length > 0) {
+              selectedAccount = accounts[0];
+            }
+
+            if (selectedAccount) {
+              setCurrentAccount(selectedAccount);
+              localStorage.setItem(STORAGE_KEY, selectedAccount.accountId);
+            }
           }
         }
       } catch (error) {
@@ -188,15 +200,4 @@ export function useAccount() {
     throw new Error('useAccount must be used within an AccountProvider');
   }
   return context;
-}
-
-/**
- * Format account ID to display name
- */
-function formatAccountName(accountId: string): string {
-  // Convert kebab-case to Title Case
-  return accountId
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 }

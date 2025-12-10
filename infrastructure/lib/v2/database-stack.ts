@@ -16,6 +16,7 @@ export class DatabaseStackV2 extends cdk.Stack {
   public readonly orderLinesTable: dynamodb.Table;
   public readonly carrierCostsTable: dynamodb.Table;
   public readonly skuHistoryTable: dynamodb.Table;
+  public readonly priceChangesTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -182,6 +183,39 @@ export class DatabaseStackV2 extends cdk.Stack {
     });
 
     // ============================================================
+    // PRICE CHANGES TABLE - Audit log for all price changes
+    // ============================================================
+    this.priceChangesTable = new dynamodb.Table(this, 'PriceChangesTable', {
+      tableName: 'repricing-v2-price-changes',
+      partitionKey: { name: 'accountId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'skuTimestamp', type: dynamodb.AttributeType.STRING }, // "SKU#2024-01-15T10:30:00Z"
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecovery: true,
+    });
+
+    // GSI for querying price changes by SKU within an account
+    this.priceChangesTable.addGlobalSecondaryIndex({
+      indexName: 'by-account-sku',
+      partitionKey: { name: 'accountId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sku', type: dynamodb.AttributeType.STRING },
+    });
+
+    // GSI for querying price changes by user within an account
+    this.priceChangesTable.addGlobalSecondaryIndex({
+      indexName: 'by-account-user',
+      partitionKey: { name: 'accountId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'changedBy', type: dynamodb.AttributeType.STRING },
+    });
+
+    // GSI for querying price changes by date within an account
+    this.priceChangesTable.addGlobalSecondaryIndex({
+      indexName: 'by-account-date',
+      partitionKey: { name: 'accountId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'changedAt', type: dynamodb.AttributeType.STRING },
+    });
+
+    // ============================================================
     // OUTPUTS
     // ============================================================
     new cdk.CfnOutput(this, 'AccountsTableName', {
@@ -227,6 +261,11 @@ export class DatabaseStackV2 extends cdk.Stack {
     new cdk.CfnOutput(this, 'SkuHistoryTableName', {
       value: this.skuHistoryTable.tableName,
       exportName: 'RepricingV2SkuHistoryTableName',
+    });
+
+    new cdk.CfnOutput(this, 'PriceChangesTableName', {
+      value: this.priceChangesTable.tableName,
+      exportName: 'RepricingV2PriceChangesTableName',
     });
   }
 }

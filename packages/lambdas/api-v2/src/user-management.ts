@@ -11,6 +11,7 @@ import {
   ListUsersInGroupCommand,
   AdminDisableUserCommand,
   AdminEnableUserCommand,
+  AdminSetUserPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { User, CreateUserRequest, UpdateUserRequest } from '@repricing/core';
 
@@ -103,8 +104,8 @@ export class UserManagementService {
             ? [{ Name: 'custom:defaultAccount', Value: request.defaultAccount }]
             : []),
         ],
-        TemporaryPassword: request.temporaryPassword,
-        MessageAction: request.temporaryPassword ? undefined : 'SUPPRESS',
+        TemporaryPassword: request.temporaryPassword || undefined,
+        // Always send welcome email with temporary password
       })
     );
 
@@ -264,6 +265,83 @@ export class UserManagementService {
         Username: email,
       })
     );
+  }
+
+  /**
+   * Enable a disabled user
+   */
+  async enableUser(email: string): Promise<void> {
+    await cognitoClient.send(
+      new AdminEnableUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email,
+      })
+    );
+  }
+
+  /**
+   * Resend invitation email with new temporary password
+   * This enables the user, sets a new temp password, and forces password change
+   */
+  async resendInvitation(email: string): Promise<void> {
+    // First enable the user if disabled
+    await cognitoClient.send(
+      new AdminEnableUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email,
+      })
+    );
+
+    // Generate a random temporary password
+    const tempPassword = this.generateTempPassword();
+
+    // Set a new temporary password (this triggers the welcome email)
+    await cognitoClient.send(
+      new AdminSetUserPasswordCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email,
+        Password: tempPassword,
+        Permanent: false, // This forces password change on next login
+      })
+    );
+
+    // Re-create the user to trigger the invitation email
+    // Unfortunately AdminSetUserPassword doesn't send an email
+    // So we need to use AdminCreateUser with RESEND
+    await cognitoClient.send(
+      new AdminCreateUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: email,
+        MessageAction: 'RESEND',
+        DesiredDeliveryMediums: ['EMAIL'],
+      })
+    );
+  }
+
+  /**
+   * Generate a random temporary password meeting Cognito requirements
+   */
+  private generateTempPassword(): string {
+    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lower = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const special = '!@#$%^&*';
+    const all = upper + lower + numbers + special;
+
+    let password = '';
+    // Ensure at least one of each required type
+    password += upper[Math.floor(Math.random() * upper.length)];
+    password += lower[Math.floor(Math.random() * lower.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += special[Math.floor(Math.random() * special.length)];
+
+    // Fill the rest randomly
+    for (let i = 0; i < 8; i++) {
+      password += all[Math.floor(Math.random() * all.length)];
+    }
+
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   }
 
   /**

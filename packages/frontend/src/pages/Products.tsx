@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { productsApi, analyticsApi } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
 import { useAccount } from '../context/AccountContext';
@@ -40,6 +40,7 @@ const renderSortIcon = (field: SortField, sortField: SortField, sortDirection: S
 
 export default function Products() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
   const { currencySymbol } = useAccount();
@@ -62,7 +63,7 @@ export default function Products() {
 
   const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ['sales', accountId, 180],
-    queryFn: () => analyticsApi.sales(180),
+    queryFn: () => analyticsApi.sales({ days: 180 }),
   });
 
   // Wait for both products and sales data before showing content
@@ -246,11 +247,39 @@ export default function Products() {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex-shrink-0 p-8 pb-0">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="mt-1 text-sm text-gray-500">
             View and manage product costs
           </p>
+        </div>
+
+        {/* Sub-navigation tabs */}
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="-mb-px flex space-x-8">
+            <Link
+              to="/products"
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                location.pathname === '/products'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Package className="h-4 w-4 inline mr-2" />
+              All Products
+            </Link>
+            <Link
+              to="/products/price-changes"
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                location.pathname === '/products/price-changes'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <History className="h-4 w-4 inline mr-2" />
+              Price Changes
+            </Link>
+          </nav>
         </div>
 
       {/* Stats */}
