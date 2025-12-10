@@ -266,3 +266,32 @@ When needing to backfill historical orders for a new tenant:
 
 ### CloudWatch Logs (Windows)
 AWS CLI has emoji encoding issues on Windows. Use Node.js SDK script at `C:/projects/Trading-Dashboard/get-logs.js` instead.
+
+## Rollback Points
+
+Git save points for easy rollback if needed:
+
+| Commit | Date | Description |
+|--------|------|-------------|
+| `384f65f` | 2025-12-10 | Admin Delivery Costs, Price History fix, Documentation |
+| `fae9963` | 2025-12-10 | User management, Akeneo multi-account sync, UI improvements |
+| `8398597` | 2025-12-10 | Akeneo PIM integration and Sales by Family chart |
+| `c6b6c73` | 2025-12-09 | V2 Multi-Tenant Architecture Complete |
+| `72d2e1d` | 2025-12-09 | Complete Trading Dashboard with all features |
+
+### How to Rollback
+```bash
+# Rollback code only (keeps working directory changes)
+git reset --soft <commit>
+
+# Full rollback (discards all changes)
+git reset --hard <commit>
+
+# After rollback, redeploy:
+cd packages/frontend && npm run build
+aws s3 sync dist s3://repricing-v2-frontend-610274502245 --delete --region eu-west-2
+aws cloudfront create-invalidation --distribution-id EO4ZPYXTKH81H --paths "/*"
+
+# For Lambda changes, redeploy infrastructure:
+cd infrastructure && npx cdk deploy --app "npx ts-node bin/app-v2.ts" RepricingV2LambdaStack --require-approval never
+```
