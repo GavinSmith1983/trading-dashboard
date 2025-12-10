@@ -117,9 +117,8 @@ The Trading Dashboard is a **multi-tenant V2 architecture** supporting multiple 
 
 ## User Management
 
-### Cognito User Pools
-- **V2 Pool**: `eu-west-2_XPGjaZEIp` (`repricing-v2-users`) - Used by Lambda API
-- **V1 Pool**: `eu-west-2_t4tJsxt3z` (`repricing-users`) - Legacy
+### Cognito User Pool
+- **User Pool**: `eu-west-2_XPGjaZEIp` (`repricing-v2-users`)
 
 ### User Roles
 | Role | Permissions |
@@ -295,3 +294,22 @@ aws cloudfront create-invalidation --distribution-id EO4ZPYXTKH81H --paths "/*"
 # For Lambda changes, redeploy infrastructure:
 cd infrastructure && npx cdk deploy --app "npx ts-node bin/app-v2.ts" RepricingV2LambdaStack --require-approval never
 ```
+
+## V1 Infrastructure Removal (Completed 2025-12-10)
+
+All V1 infrastructure has been removed:
+
+**AWS Resources Deleted:**
+- CloudFormation Stacks: `RepricingFrontendStack`, `RepricingApiStack`, `RepricingLambdaStack`, `RepricingAuthStack`, `RepricingDatabaseStack`
+- DynamoDB Tables: `repricing-products`, `repricing-orders`, `repricing-order-lines`, `repricing-proposals`, `repricing-rules`, `repricing-channels`, `repricing-carrier-costs`, `repricing-sku-history`
+- Lambda Functions: `repricing-api`, `repricing-data-sync`, `repricing-order-sync`, `repricing-competitor-scrape`, `repricing-price-calculator`
+- S3 Bucket: `repricing-frontend-610274502245`
+- CloudFront: `E28VLOA0H027TB` (`dd0eswlutoz5b.cloudfront.net`)
+- Cognito: `eu-west-2_t4tJsxt3z` (`repricing-users`)
+- API Gateway: `2uf6pmvya1` (`Repricing API`)
+
+**Code Files Deleted:**
+- `infrastructure/bin/app.ts`
+- `infrastructure/lib/database-stack.ts`, `lambda-stack.ts`, `api-stack.ts`, `auth-stack.ts`, `frontend-stack.ts`
+- `packages/lambdas/api/`, `data-sync/`, `order-sync/`, `competitor-scrape/`, `price-calculator/`
+- `packages/core/src/services/dynamodb.ts` (V1 service)

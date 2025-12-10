@@ -448,7 +448,7 @@ export const pricesApi = {
     api.get<PriceChangeHistoryResponse>(`/prices/recent?limit=${limit}`),
 
   getHistory: (sku: string, limit: number = 50) =>
-    api.get<PriceChangeHistoryResponse>(`/prices/history/${encodeURIComponent(sku)}?limit=${limit}`),
+    api.get<PriceChangeHistoryResponse>(`/prices/${encodeURIComponent(sku)}/history?limit=${limit}`),
 };
 
 // V2: Accounts API (Super-admin only)
