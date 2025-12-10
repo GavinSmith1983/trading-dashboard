@@ -291,17 +291,37 @@ export interface RecalculateResult {
 export const carriersApi = {
   list: () => api.get<{ items: CarrierCost[]; count: number }>('/carriers'),
 
+  // List carriers for a specific account (admin use)
+  listForAccount: (accountId: string) =>
+    api.getWithAccount<{ items: CarrierCost[]; count: number }>('/carriers', accountId),
+
   get: (carrierId: string) => api.get<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`),
 
   create: (data: Omit<CarrierCost, 'lastUpdated'>) =>
     api.post<CarrierCost>('/carriers', data),
 
+  // Create carrier for a specific account (admin use)
+  createForAccount: (data: Omit<CarrierCost, 'lastUpdated'>, accountId: string) =>
+    api.postWithAccount<CarrierCost>('/carriers', data, accountId),
+
   update: (carrierId: string, data: Partial<CarrierCost>) =>
     api.put<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`, data),
 
+  // Update carrier for a specific account (admin use)
+  updateForAccount: (carrierId: string, data: Partial<CarrierCost>, accountId: string) =>
+    api.putWithAccount<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`, data, accountId),
+
   delete: (carrierId: string) => api.delete(`/carriers/${encodeURIComponent(carrierId)}`),
 
+  // Delete carrier for a specific account (admin use)
+  deleteForAccount: (carrierId: string, accountId: string) =>
+    api.deleteWithAccount(`/carriers/${encodeURIComponent(carrierId)}`, accountId),
+
   recalculate: () => api.post<RecalculateResult>('/carriers/recalculate', {}),
+
+  // Recalculate for a specific account (admin use)
+  recalculateForAccount: (accountId: string) =>
+    api.postWithAccount<RecalculateResult>('/carriers/recalculate', {}, accountId),
 };
 
 // SKU History API
@@ -425,7 +445,7 @@ export const pricesApi = {
     api.put<PriceUpdateResult>(`/prices/${encodeURIComponent(sku)}`, { channelId, price }),
 
   getRecentChanges: (limit: number = 100) =>
-    api.get<PriceChangeHistoryResponse>(`/prices/changes?limit=${limit}`),
+    api.get<PriceChangeHistoryResponse>(`/prices/recent?limit=${limit}`),
 
   getHistory: (sku: string, limit: number = 50) =>
     api.get<PriceChangeHistoryResponse>(`/prices/history/${encodeURIComponent(sku)}?limit=${limit}`),

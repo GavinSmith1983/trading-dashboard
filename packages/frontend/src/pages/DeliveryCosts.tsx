@@ -7,7 +7,7 @@ import { useAccount } from '../context/AccountContext';
 import type { CarrierCost, RecalculateResult } from '../api';
 import { Card, CardHeader, CardContent } from '../components/Card';
 import Button from '../components/Button';
-import Badge from '../components/Badge';
+// Badge import removed - using select dropdown for status
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/Table';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
@@ -357,21 +357,25 @@ export default function DeliveryCosts() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {editingCarrier?.carrierId === carrier.carrierId ? (
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.isActive}
-                          onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="text-sm">Active</span>
-                      </label>
-                    ) : (
-                      <Badge variant={carrier.isActive ? 'success' : 'default'}>
-                        {carrier.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    )}
+                    <select
+                      value={carrier.isActive ? 'active' : 'inactive'}
+                      onChange={(e) => {
+                        const newIsActive = e.target.value === 'active';
+                        updateMutation.mutate({
+                          carrierId: carrier.carrierId,
+                          data: { isActive: newIsActive },
+                        });
+                      }}
+                      disabled={updateMutation.isPending}
+                      className={`text-sm border rounded-lg px-2 py-1 cursor-pointer ${
+                        carrier.isActive
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-gray-50 border-gray-300 text-gray-500'
+                      }`}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
                   </TableCell>
                   <TableCell className="text-sm text-gray-500">
                     {new Date(carrier.lastUpdated).toLocaleDateString()}

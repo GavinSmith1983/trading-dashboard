@@ -30,7 +30,6 @@ const navItems = [
   { to: '/insights', label: 'Insights', icon: Lightbulb },
   { to: '/proposals', label: 'Proposals', icon: ListChecks },
   { to: '/channels', label: 'Channels', icon: Store },
-  { to: '/delivery-costs', label: 'Delivery Costs', icon: Truck },
   { to: '/rules', label: 'Pricing Rules', icon: Settings },
   { to: '/import', label: 'Import', icon: Upload },
 ];
@@ -39,6 +38,7 @@ const navItems = [
 const adminNavItems = [
   { to: '/admin/accounts', label: 'Accounts', icon: Building2 },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/delivery-costs', label: 'Delivery Costs', icon: Truck },
 ];
 
 export default function Layout() {

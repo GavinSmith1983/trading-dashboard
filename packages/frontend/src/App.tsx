@@ -17,6 +17,7 @@ import Rules from './pages/Rules';
 import Import from './pages/Import';
 import AccountsAdmin from './pages/admin/Accounts';
 import UsersAdmin from './pages/admin/Users';
+import DeliveryCostsAdmin from './pages/admin/DeliveryCosts';
 
 function App() {
   return (
@@ -73,6 +74,14 @@ function App() {
                 element={
                   <ProtectedRoute requiredRole="admin">
                     <UsersAdmin />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="admin/delivery-costs"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <DeliveryCostsAdmin />
                   </ProtectedRoute>
                 }
               />

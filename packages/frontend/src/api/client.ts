@@ -44,7 +44,8 @@ async function getIdToken(): Promise<string | null> {
 
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  overrideAccountId?: string
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
 
@@ -62,7 +63,7 @@ async function request<T>(
   }
 
   // Add X-Account-Id header for V2 multi-tenant API
-  const accountId = getCurrentAccountId();
+  const accountId = overrideAccountId || getCurrentAccountId();
   if (accountId) {
     (headers as Record<string, string>)['X-Account-Id'] = accountId;
   }
@@ -115,4 +116,26 @@ export const api = {
       method: 'DELETE',
       body: data ? JSON.stringify(data) : undefined,
     }),
+
+  // Methods with account override for admin operations
+  getWithAccount: <T>(endpoint: string, accountId: string) =>
+    request<T>(endpoint, {}, accountId),
+
+  postWithAccount: <T>(endpoint: string, data: unknown, accountId: string) =>
+    request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    }, accountId),
+
+  putWithAccount: <T>(endpoint: string, data: unknown, accountId: string) =>
+    request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    }, accountId),
+
+  deleteWithAccount: <T>(endpoint: string, accountId: string, data?: unknown) =>
+    request<T>(endpoint, {
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    }, accountId),
 };
