@@ -58,6 +58,7 @@ The Trading Dashboard is a **multi-tenant V2 architecture** supporting multiple 
 - **Behaviour**: Only syncs products with:
   - No `family` field, OR
   - `lastSyncedFromAkeneo` older than 7 days
+- **Pagination**: Uses `search_after` cursor pagination (not page-based) to handle >10,000 products
 - **Rate Limiting**: 50 requests/second (Akeneo allows 100/s)
 - **Batch Size**: Max 4000 products per run
 - **Retry Logic**: Exponential backoff on 429 responses
@@ -188,6 +189,7 @@ Navigation items under Administration:
 
 ### Products
 - `GET /products` - List products with pagination
+- `GET /products?includeSales=true&salesDays=90` - List products with embedded sales data (combined endpoint)
 - `GET /products/{sku}` - Get single product
 - `PUT /products/{sku}` - Update product
 
@@ -246,6 +248,35 @@ aws lambda invoke --function-name repricing-v2-akeneo-sync --region eu-west-2 --
 aws lambda invoke --function-name repricing-v2-api --region eu-west-2 --cli-binary-format raw-in-base64-out --payload '{"httpMethod":"GET","path":"/accounts","queryStringParameters":{},"headers":{},"requestContext":{"authorizer":{"claims":{"sub":"test","email":"test@test.com","cognito:groups":"super-admin"}}}}' response.json && cat response.json
 ```
 
+## Performance Optimizations
+
+### API Gateway Compression
+- **Enabled**: `minimumCompressionSize: 1000` (gzip responses >1KB)
+- **Impact**: Products endpoint reduced from 5.1MB to ~500KB (10:1 compression)
+- **Result**: Page load improved from 55s to ~5s
+
+### Products Page Optimization
+The `/products` endpoint supports a combined query that eliminates the need for separate sales API calls:
+```
+GET /products?includeSales=true&salesDays=90
+```
+- Returns products with embedded `salesQuantity` and `salesRevenue` fields
+- Single API call instead of `/products` + `/analytics/sales`
+- Frontend uses `productsApi.listWithSales(salesDays)` method
+
+### React Query Best Practice
+Always use `enabled: hasAccount` to prevent duplicate requests when account is loading:
+```typescript
+const { accountId } = useAccountQuery();
+const hasAccount = accountId !== 'no-account';
+
+const { data } = useQuery({
+  queryKey: ['products', accountId],
+  queryFn: () => productsApi.list(),
+  enabled: hasAccount,  // Prevents query with fallback 'no-account' key
+});
+```
+
 ## Important Notes
 
 ### Order Sync Lambda
@@ -265,6 +296,13 @@ When needing to backfill historical orders for a new tenant:
 
 ### CloudWatch Logs (Windows)
 AWS CLI has emoji encoding issues on Windows. Use Node.js SDK script at `C:/projects/Trading-Dashboard/get-logs.js` instead.
+
+### API Gateway Compression
+If compression gets disabled, re-enable with (Git Bash on Windows):
+```bash
+MSYS_NO_PATHCONV=1 aws apigateway update-rest-api --rest-api-id lvsj0zgfz2 --region eu-west-2 --patch-operations "op=replace,path=/minimumCompressionSize,value=1000"
+MSYS_NO_PATHCONV=1 aws apigateway create-deployment --rest-api-id lvsj0zgfz2 --stage-name prod --region eu-west-2
+```
 
 ## Rollback Points
 

@@ -245,9 +245,11 @@ export class AkeneoService {
   ): Promise<Map<string, AkeneoProductEnrichment>> {
     const allProducts = new Map<string, AkeneoProductEnrichment>();
     let page = 1;
-    let nextUrl: string | undefined = '/api/rest/v1/products?limit=100';
+    // Use search_after pagination to avoid the 100-page limit
+    // See: https://api.akeneo.com/documentation/pagination.html#the-search-after-method
+    let nextUrl: string | undefined = '/api/rest/v1/products?limit=100&pagination_type=search_after';
 
-    console.log('[Akeneo] Fetching products...');
+    console.log('[Akeneo] Fetching products (using search_after pagination)...');
 
     while (nextUrl) {
       const apiResponse: AkeneoPaginatedResponse<AkeneoApiProduct> = await this.request<AkeneoPaginatedResponse<AkeneoApiProduct>>(nextUrl);
@@ -272,9 +274,9 @@ export class AkeneoService {
 
       console.log(`[Akeneo] Fetched page ${page}: ${enrichedProducts.length} products (total: ${allProducts.size})`);
 
-      // Get next page URL
+      // Get next page URL - search_after provides a cursor-based next link
       const nextLink = apiResponse._links.next?.href;
-      if (nextLink) {
+      if (nextLink && enrichedProducts.length > 0) {
         // Extract just the path from the full URL
         const parsedUrl = new URL(nextLink);
         nextUrl = parsedUrl.pathname + parsedUrl.search;

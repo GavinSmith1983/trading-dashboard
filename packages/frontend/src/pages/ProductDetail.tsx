@@ -77,86 +77,140 @@ interface PriceChangeAnnotation {
   reason?: string;
 }
 
-// Custom label component for price change reference lines with tooltip
+// Custom label component for price change reference lines - positioned at bottom
+// This is just a visual marker - the tooltip info is shown in CustomChartTooltip
 const PriceChangeLabel = ({
   viewBox,
   annotation,
-  currencySymbol = '£'
+  chartHeight = 300
 }: {
-  viewBox?: { x?: number; y?: number };
+  viewBox?: { x?: number; y?: number; height?: number };
   annotation: PriceChangeAnnotation;
-  currencySymbol?: string;
+  chartHeight?: number;
 }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
   const x = viewBox?.x ?? 0;
   const priceChange = annotation.newPrice - annotation.previousPrice;
   const isIncrease = priceChange > 0;
+  // Position at bottom of chart area (above x-axis labels)
+  const yPos = chartHeight - 25;
 
   return (
-    <g>
-      {/* Clickable/hoverable area */}
+    <g style={{ pointerEvents: 'none' }}>
       <circle
         cx={x}
-        cy={15}
+        cy={yPos}
         r={8}
         fill="#f97316"
         stroke="#fff"
         strokeWidth={1.5}
-        style={{ cursor: 'pointer' }}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
       />
       <text
         x={x}
-        y={19}
+        y={yPos + 4}
         textAnchor="middle"
         fill="#fff"
         fontSize={10}
         fontWeight={700}
-        style={{ pointerEvents: 'none' }}
       >
         {isIncrease ? '↑' : '↓'}
       </text>
-
-      {/* Tooltip */}
-      {showTooltip && (
-        <foreignObject x={x - 100} y={28} width={200} height={120}>
-          <div
-            style={{
-              background: 'white',
-              border: '1px solid #e5e7eb',
-              borderRadius: '6px',
-              padding: '8px 10px',
-              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-              fontSize: '12px',
-              lineHeight: '1.4',
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: '4px', color: '#f97316' }}>
-              Price Change - {annotation.channel}
-            </div>
-            <div style={{ color: '#6b7280' }}>
-              {currencySymbol}{annotation.previousPrice.toFixed(2)} → {currencySymbol}{annotation.newPrice.toFixed(2)}
-              <span style={{
-                marginLeft: '6px',
-                color: isIncrease ? '#22c55e' : '#ef4444',
-                fontWeight: 500
-              }}>
-                ({isIncrease ? '+' : ''}{currencySymbol}{priceChange.toFixed(2)})
-              </span>
-            </div>
-            <div style={{ color: '#9ca3af', marginTop: '4px' }}>
-              By: {annotation.changedBy}
-            </div>
-            {annotation.reason && (
-              <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>
-                {annotation.reason}
-              </div>
-            )}
-          </div>
-        </foreignObject>
-      )}
     </g>
+  );
+};
+
+// Custom tooltip component that includes price change info
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+  unitPeriod: 'day' | 'week' | 'month';
+  currencySymbol: string;
+  priceChangeAnnotations: PriceChangeAnnotation[];
+}
+
+const CustomChartTooltip = ({ active, payload, label, unitPeriod, currencySymbol, priceChangeAnnotations }: CustomTooltipProps) => {
+  if (!active || !payload || !payload.length) return null;
+
+  // Format date label
+  const date = new Date(label as string);
+  let dateLabel = '';
+  if (unitPeriod === 'week') {
+    const endOfWeek = new Date(date);
+    endOfWeek.setDate(endOfWeek.getDate() + 6);
+    dateLabel = `Week of ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${endOfWeek.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  } else if (unitPeriod === 'month') {
+    dateLabel = date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  } else {
+    dateLabel = date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // Find price change for this date
+  const priceChange = priceChangeAnnotations.find(a => a.date === label);
+
+  // Format values
+  const formatValue = (value: number | null | undefined, name: string) => {
+    if (value === null || value === undefined) return '-';
+    const revenueLabel = unitPeriod === 'day' ? `Daily Revenue (${currencySymbol})` : unitPeriod === 'week' ? `Weekly Revenue (${currencySymbol})` : `Monthly Revenue (${currencySymbol})`;
+    if (name === `Price (${currencySymbol})` || name === revenueLabel || name === `Lowest Competitor (${currencySymbol})`) {
+      return `${currencySymbol}${value.toFixed(2)}`;
+    }
+    if (name === 'Margin (%)') {
+      return `${value.toFixed(1)}%`;
+    }
+    return value;
+  };
+
+  return (
+    <div style={{
+      backgroundColor: '#ffffff',
+      border: '1px solid #d1d5db',
+      borderRadius: '8px',
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      padding: '10px 12px',
+      fontSize: '12px',
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: '8px', color: '#374151' }}>{dateLabel}</div>
+
+      {/* Data values */}
+      {payload.map((entry: any, index: number) => (
+        <div key={index} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginBottom: '2px' }}>
+          <span style={{ color: entry.color }}>{entry.name}:</span>
+          <span style={{ fontWeight: 500 }}>{formatValue(entry.value, entry.name)}</span>
+        </div>
+      ))}
+
+      {/* Price change info if present */}
+      {priceChange && (
+        <div style={{
+          marginTop: '8px',
+          paddingTop: '8px',
+          borderTop: '1px solid #e5e7eb',
+        }}>
+          <div style={{ fontWeight: 600, color: '#f97316', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '14px' }}>{priceChange.newPrice > priceChange.previousPrice ? '↑' : '↓'}</span>
+            Price Change - {priceChange.channel}
+          </div>
+          <div style={{ color: '#6b7280' }}>
+            {currencySymbol}{priceChange.previousPrice.toFixed(2)} → {currencySymbol}{priceChange.newPrice.toFixed(2)}
+            <span style={{
+              marginLeft: '6px',
+              color: priceChange.newPrice > priceChange.previousPrice ? '#22c55e' : '#ef4444',
+              fontWeight: 500
+            }}>
+              ({priceChange.newPrice > priceChange.previousPrice ? '+' : ''}{currencySymbol}{(priceChange.newPrice - priceChange.previousPrice).toFixed(2)})
+            </span>
+          </div>
+          <div style={{ color: '#9ca3af', marginTop: '2px' }}>
+            By: {priceChange.changedBy}
+          </div>
+          {priceChange.reason && (
+            <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+              {priceChange.reason}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -264,7 +318,7 @@ export default function ProductDetail() {
   const [newCompetitorUrl, setNewCompetitorUrl] = useState('');
   const [isAddingUrl, setIsAddingUrl] = useState(false);
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
-  const [selectedTimeRange, setSelectedTimeRange] = useState<number | 'thisMonth' | 'lastMonth'>(180); // Default 6 months
+  const [selectedTimeRange, setSelectedTimeRange] = useState<number | 'thisMonth' | 'lastMonth'>(30); // Default 1 month
   const [unitPeriod, setUnitPeriod] = useState<'day' | 'week' | 'month'>('day'); // Aggregation period
   const [isPriceHistoryExpanded, setIsPriceHistoryExpanded] = useState(false); // Price history visibility
 
@@ -1182,41 +1236,7 @@ export default function ProductDetail() {
                     <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} width={50} />
                     <Tooltip
                       wrapperStyle={{ zIndex: 1000 }}
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                        opacity: 1,
-                      }}
-                      labelFormatter={(label) => {
-                        const date = new Date(label);
-                        if (unitPeriod === 'week') {
-                          const endOfWeek = new Date(date);
-                          endOfWeek.setDate(endOfWeek.getDate() + 6);
-                          return `Week of ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${endOfWeek.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-                        }
-                        if (unitPeriod === 'month') {
-                          return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-                        }
-                        return date.toLocaleDateString('en-GB', {
-                          weekday: 'short',
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        });
-                      }}
-                      formatter={(value: number, name: string) => {
-                        if (value === null || value === undefined) return ['-', name];
-                        const revenueLabel = unitPeriod === 'day' ? `Daily Revenue (${currencySymbol})` : unitPeriod === 'week' ? `Weekly Revenue (${currencySymbol})` : `Monthly Revenue (${currencySymbol})`;
-                        if (name === `Price (${currencySymbol})` || name === revenueLabel || name === `Lowest Competitor (${currencySymbol})`) {
-                          return [`${currencySymbol}${value.toFixed(2)}`, name];
-                        }
-                        if (name === 'Margin (%)') {
-                          return [`${value.toFixed(1)}%`, name];
-                        }
-                        return [value, name];
-                      }}
+                      content={<CustomChartTooltip unitPeriod={unitPeriod} currencySymbol={currencySymbol} priceChangeAnnotations={priceChangeAnnotations} />}
                     />
                     <Legend
                       onClick={(e: any) => {
@@ -1287,7 +1307,7 @@ export default function ProductDetail() {
                       hide={hiddenLines.has('lowestCompetitor')}
                       connectNulls={false}
                     />
-                    {/* Price change annotations */}
+                    {/* Price change annotations - indicators at bottom */}
                     {priceChangeAnnotations.map((annotation, index) => (
                       <ReferenceLine
                         key={`price-change-${index}`}
@@ -1296,7 +1316,7 @@ export default function ProductDetail() {
                         strokeWidth={2}
                         strokeDasharray="4 2"
                         yAxisId="left"
-                        label={<PriceChangeLabel annotation={annotation} currencySymbol={currencySymbol} />}
+                        label={<PriceChangeLabel annotation={annotation} chartHeight={300} />}
                       />
                     ))}
                   </LineChart>

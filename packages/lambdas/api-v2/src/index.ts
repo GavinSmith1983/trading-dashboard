@@ -378,8 +378,59 @@ async function handleProducts(
 
   if (method === 'GET' && !sku) {
     // List all products for account
+    const params = event.queryStringParameters || {};
+    const includeSales = params.includeSales === 'true';
+    const salesDays = parseInt(params.salesDays || '90', 10);
+
+    const startTime = Date.now();
     const products = await db.getAllProducts(accountId);
-    return response(200, { items: products, count: products.length });
+    console.log(`getAllProducts took ${Date.now() - startTime}ms for ${products.length} products`);
+
+    // If includeSales=true, fetch sales data and merge it with products
+    let salesBySku: Record<string, { quantity: number; revenue: number }> = {};
+    if (includeSales) {
+      const salesStart = Date.now();
+      const today = new Date();
+      const fromDate = new Date(today);
+      fromDate.setDate(fromDate.getDate() - salesDays);
+      const fromDateStr = fromDate.toISOString().substring(0, 10);
+      const toDateStr = today.toISOString().substring(0, 10);
+
+      const orderLines = await db.getOrderLinesByDateRange(accountId, fromDateStr, toDateStr);
+      console.log(`getOrderLinesByDateRange took ${Date.now() - salesStart}ms for ${orderLines.length} lines`);
+
+      // Aggregate by SKU
+      for (const line of orderLines) {
+        const lineSku = line.sku;
+        if (!salesBySku[lineSku]) {
+          salesBySku[lineSku] = { quantity: 0, revenue: 0 };
+        }
+        salesBySku[lineSku].quantity += line.quantity || 0;
+        salesBySku[lineSku].revenue += line.lineTotalInclVat || 0;
+      }
+    }
+
+    // Return products with optional sales data embedded
+    const lightProducts = products.map(p => ({
+      sku: p.sku,
+      title: p.title,
+      brand: p.brand,
+      currentPrice: p.currentPrice,
+      costPrice: p.costPrice,
+      deliveryCost: p.deliveryCost,
+      stockLevel: p.stockLevel,
+      imageUrl: p.imageUrl,
+      ...(includeSales && salesBySku[p.sku] ? {
+        salesQuantity: salesBySku[p.sku].quantity,
+        salesRevenue: salesBySku[p.sku].revenue,
+      } : {}),
+    }));
+
+    return response(200, {
+      items: lightProducts,
+      count: lightProducts.length,
+      ...(includeSales ? { salesDays } : {}),
+    });
   }
 
   if (method === 'GET' && sku) {
@@ -1756,6 +1807,7 @@ async function handleHistory(
 
 /**
  * Get sales by channel for each day for a specific SKU
+ * Uses the efficient by-account-date GSI and filters by SKU in memory
  */
 async function getChannelSalesByDay(
   accountId: string,
@@ -1763,7 +1815,13 @@ async function getChannelSalesByDay(
   fromDate: string,
   toDate: string
 ): Promise<Record<string, Record<string, { quantity: number; revenue: number }>>> {
-  const orderLines = await db.getOrderLinesBySku(accountId, sku, fromDate, toDate);
+  // Use the efficient date-range query (uses by-account-date GSI)
+  // then filter by SKU in memory - much faster than FilterExpression
+  const allOrderLines = await db.getOrderLinesByDateRange(accountId, fromDate, toDate);
+
+  // Filter to just this SKU (case-insensitive match)
+  const skuUpper = sku.toUpperCase();
+  const orderLines = allOrderLines.filter(line => line.sku.toUpperCase() === skuUpper);
 
   const result: Record<string, Record<string, { quantity: number; revenue: number }>> = {};
 

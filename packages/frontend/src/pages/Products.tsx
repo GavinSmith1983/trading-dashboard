@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight, History } from 'lucide-react';
-import { productsApi, analyticsApi } from '../api';
+import { productsApi, type ProductWithSales } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
 import { useAccount } from '../context/AccountContext';
 import type { Product } from '../types';
@@ -56,21 +56,14 @@ export default function Products() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
-  const { data, isLoading: productsLoading, error, refetch } = useQuery({
-    queryKey: ['products', accountId],
-    queryFn: productsApi.list,
+  const hasAccount = accountId !== 'no-account';
+  const salesDays = 90;
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['products-with-sales', accountId, salesDays],
+    queryFn: () => productsApi.listWithSales(salesDays),
+    enabled: hasAccount,
   });
-
-  const { data: salesData, isLoading: salesLoading } = useQuery({
-    queryKey: ['sales', accountId, 180],
-    queryFn: () => analyticsApi.sales({ days: 180 }),
-  });
-
-  // Wait for both products and sales data before showing content
-  const isLoading = productsLoading || salesLoading;
-
-  // Calculate average daily sales from 6-month data
-  const salesDays = salesData?.days || 180;
 
   const updateMutation = useMutation({
     mutationFn: ({ sku, data }: { sku: string; data: Partial<Product> }) =>
@@ -81,8 +74,7 @@ export default function Products() {
     },
   });
 
-  const products = data?.items || [];
-  const sales = salesData?.sales || {};
+  const products = data?.items || [] as ProductWithSales[];
 
   // Filter and sort products - must be before early returns to maintain hook order
   const filteredProducts = useMemo(() => {
@@ -158,12 +150,12 @@ export default function Products() {
           valueB = b.stockLevel || 0;
           break;
         case 'avgSales':
-          valueA = (sales[a.sku]?.quantity || 0) / salesDays;
-          valueB = (sales[b.sku]?.quantity || 0) / salesDays;
+          valueA = (a.salesQuantity || 0) / salesDays;
+          valueB = (b.salesQuantity || 0) / salesDays;
           break;
         case 'avgRevenue':
-          valueA = (sales[a.sku]?.revenue || 0) / salesDays;
-          valueB = (sales[b.sku]?.revenue || 0) / salesDays;
+          valueA = (a.salesRevenue || 0) / salesDays;
+          valueB = (b.salesRevenue || 0) / salesDays;
           break;
         default:
           return 0;
@@ -179,7 +171,7 @@ export default function Products() {
         ? (valueA as number) - (valueB as number)
         : (valueB as number) - (valueA as number);
     });
-  }, [products, searchTerm, sortField, sortDirection, sales, stockFilter, missingCostFilter, marginFilter]);
+  }, [products, searchTerm, sortField, sortDirection, stockFilter, missingCostFilter, marginFilter, salesDays]);
 
   // Calculate pagination values
   const totalPages = Math.ceil(filteredProducts.length / pageSize);
@@ -238,8 +230,8 @@ export default function Products() {
   }
 
   const productsWithCosts = products.filter((p) => p.costPrice > 0).length;
-  const totalSales = Object.values(sales).reduce((sum, s) => sum + s.quantity, 0);
-  const totalRevenue = Object.values(sales).reduce((sum, s) => sum + s.revenue, 0);
+  const totalSales = products.reduce((sum, p) => sum + (p.salesQuantity || 0), 0);
+  const totalRevenue = products.reduce((sum, p) => sum + (p.salesRevenue || 0), 0);
   const avgDailySales = totalSales / salesDays;
   const avgDailyRevenue = totalRevenue / salesDays;
 
@@ -674,12 +666,12 @@ export default function Products() {
                   </TableCell>
                   <TableCell>
                     <span className="font-medium">
-                      {((sales[product.sku]?.quantity || 0) / salesDays).toFixed(2)}
+                      {((product.salesQuantity || 0) / salesDays).toFixed(2)}
                     </span>
                   </TableCell>
                   <TableCell>
                     <span className="font-medium">
-                      {currencySymbol}{((sales[product.sku]?.revenue || 0) / salesDays).toFixed(0)}
+                      {currencySymbol}{((product.salesRevenue || 0) / salesDays).toFixed(0)}
                     </span>
                   </TableCell>
                   <TableCell>

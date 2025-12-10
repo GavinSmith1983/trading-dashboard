@@ -173,8 +173,11 @@ export class DynamoDBServiceV2 {
   async getAllProducts(accountId: string): Promise<Product[]> {
     const products: Product[] = [];
     let lastKey: Record<string, unknown> | undefined;
+    let pageCount = 0;
+    const startTime = Date.now();
 
     do {
+      const pageStart = Date.now();
       const result = await this.docClient.send(
         new QueryCommand({
           TableName: this.productsTable,
@@ -183,12 +186,16 @@ export class DynamoDBServiceV2 {
           ExclusiveStartKey: lastKey,
         })
       );
+      pageCount++;
+      console.log(`DynamoDB products page ${pageCount}: ${result.Items?.length || 0} items in ${Date.now() - pageStart}ms`);
 
       if (result.Items) {
         products.push(...(result.Items as Product[]));
       }
       lastKey = result.LastEvaluatedKey;
     } while (lastKey);
+
+    console.log(`DynamoDB getAllProducts total: ${products.length} items, ${pageCount} pages, ${Date.now() - startTime}ms`);
 
     return products;
   }
