@@ -1,570 +1,69 @@
-import { api } from './client';
-import type {
-  Product,
-  Channel,
-  PricingRule,
-  PriceProposal,
-  PaginatedResponse,
-  DashboardSummary,
-  ProposalStatus,
-} from '../types';
-
-// Extended Product type with sales data
-export interface ProductWithSales extends Product {
-  salesQuantity?: number;
-  salesRevenue?: number;
-}
-
-// Products API
-export const productsApi = {
-  list: () => api.get<{ items: Product[]; count: number }>('/products'),
-
-  listWithSales: (salesDays: number = 90) =>
-    api.get<{ items: ProductWithSales[]; count: number; salesDays: number }>(
-      `/products?includeSales=true&salesDays=${salesDays}`
-    ),
-
-  get: (sku: string) => api.get<Product>(`/products/${encodeURIComponent(sku)}`),
-
-  update: (sku: string, data: Partial<Product>) =>
-    api.put<Product>(`/products/${encodeURIComponent(sku)}`, data),
-};
-
-// Proposals API
-export interface ProposalFilters {
-  status?: ProposalStatus;
-  batchId?: string;
-  brand?: string;
-  search?: string;
-  hasWarnings?: boolean;
-  appliedRuleName?: string;
-  page?: number;
-  pageSize?: number;
-}
-
-export const proposalsApi = {
-  list: (filters: ProposalFilters = {}) => {
-    const params = new URLSearchParams();
-    if (filters.status) params.set('status', filters.status);
-    if (filters.batchId) params.set('batchId', filters.batchId);
-    if (filters.brand) params.set('brand', filters.brand);
-    if (filters.search) params.set('search', filters.search);
-    if (filters.hasWarnings) params.set('hasWarnings', 'true');
-    if (filters.appliedRuleName) params.set('appliedRuleName', filters.appliedRuleName);
-    if (filters.page) params.set('page', String(filters.page));
-    if (filters.pageSize) params.set('pageSize', String(filters.pageSize));
-
-    const query = params.toString();
-    return api.get<PaginatedResponse<PriceProposal>>(`/proposals${query ? `?${query}` : ''}`);
-  },
-
-  get: (proposalId: string) => api.get<PriceProposal>(`/proposals/${proposalId}`),
-
-  approve: (proposalId: string, reviewedBy: string, notes?: string) =>
-    api.put<PriceProposal>(`/proposals/${proposalId}`, {
-      action: 'approve',
-      reviewedBy,
-      notes,
-    }),
-
-  reject: (proposalId: string, reviewedBy: string, notes?: string) =>
-    api.put<PriceProposal>(`/proposals/${proposalId}`, {
-      action: 'reject',
-      reviewedBy,
-      notes,
-    }),
-
-  modify: (proposalId: string, modifiedPrice: number, reviewedBy: string, notes?: string) =>
-    api.put<PriceProposal>(`/proposals/${proposalId}`, {
-      action: 'modify',
-      modifiedPrice,
-      reviewedBy,
-      notes,
-    }),
-
-  bulkApprove: (proposalIds: string[], reviewedBy: string, notes?: string) =>
-    api.post('/proposals/bulk-approve', { proposalIds, reviewedBy, notes }),
-
-  bulkReject: (proposalIds: string[], reviewedBy: string, notes?: string) =>
-    api.post('/proposals/bulk-reject', { proposalIds, reviewedBy, notes }),
-
-  bulkApproveFiltered: (filters: Omit<ProposalFilters, 'page' | 'pageSize'>, reviewedBy: string, notes?: string) =>
-    api.post<{ success: boolean; approvedCount: number; message: string }>('/proposals/bulk-approve-filtered', {
-      filters,
-      reviewedBy,
-      notes,
-    }),
-
-  statusCounts: () =>
-    api.get<{
-      pending: number;
-      approved: number;
-      modified: number;
-      rejected: number;
-      pushed: number;
-      totalApproved: number;
-    }>('/proposals/status-counts'),
-
-  push: (dryRun = false) =>
-    api.post<{ success: boolean; pushed: number; errors: string[] }>('/proposals/push', { dryRun }),
-};
-
-// Pricing Rules API
-export const rulesApi = {
-  list: () => api.get<{ items: PricingRule[]; count: number }>('/rules'),
-
-  get: (ruleId: string) => api.get<PricingRule>(`/rules/${ruleId}`),
-
-  create: (rule: Omit<PricingRule, 'ruleId' | 'createdAt' | 'updatedAt'>) =>
-    api.post<PricingRule>('/rules', rule),
-
-  update: (ruleId: string, rule: Partial<PricingRule>) =>
-    api.put<PricingRule>(`/rules/${ruleId}`, rule),
-
-  delete: (ruleId: string) => api.delete(`/rules/${ruleId}`),
-};
-
-// Channels API
-export const channelsApi = {
-  list: () => api.get<{ items: Channel[]; count: number }>('/channels'),
-
-  get: (channelId: string) => api.get<Channel>(`/channels/${channelId}`),
-
-  update: (channelId: string, data: Partial<Channel>) =>
-    api.put<Channel>(`/channels/${channelId}`, data),
-};
-
-// Analytics API
-export interface SalesData {
-  days: number;
-  skuCount: number;
-  sales: Record<string, { quantity: number; revenue: number }>;
-}
-
-// Insights types
-export interface InsightProduct {
-  sku: string;
-  title: string;
-  brand: string;
-  imageUrl?: string;
-  currentPrice: number;
-  costPrice: number;
-  deliveryCost: number;
-  stockLevel: number;
-  margin: number;
-  avgDailySales: number;
-  avgDailyRevenue: number;
-  daysOfStock: number | null;
-}
-
-export interface InsightCategory {
-  id: string;
-  title: string;
-  description: string;
-  count: number;
-  severity: 'critical' | 'warning' | 'info';
-  products: InsightProduct[];
-  dailyRevenueImpact?: number;
-}
-
-export interface InsightsResponse {
-  insights: InsightCategory[];
-}
-
-// Enhanced sales response with channel and daily breakdown
-export interface SalesResponse {
-  days: number;
-  fromDate: string;
-  toDate: string;
-  skuCount: number;
-  sales: Record<string, { quantity: number; revenue: number }>;
-  totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }>;
-  totals: { quantity: number; revenue: number; orders: number };
-  channels: string[];
-  dailySales?: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>>;
-  previousYear?: {
-    fromDate: string;
-    toDate: string;
-    dailySales: Record<string, { quantity: number; revenue: number; orders: number }>;
-    totals: { quantity: number; revenue: number; orders: number };
-    totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }>;
-  };
-  previousMonth?: {
-    fromDate: string;
-    toDate: string;
-    dailySales: Record<string, { quantity: number; revenue: number; orders: number }>;
-    totals: { quantity: number; revenue: number; orders: number };
-    totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }>;
-  };
-  // Category breakdown (when includeCategories=true)
-  totalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
-  categories?: string[];
-  dailySalesByFamily?: Record<string, Record<string, { quantity: number; revenue: number }>>;
-  previousYearTotalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
-  previousMonthTotalsByCategory?: Record<string, { quantity: number; revenue: number; orders: number }>;
-  // Family breakdown with nested categories
-  totalsByFamily?: Record<string, {
-    quantity: number;
-    revenue: number;
-    orders: number;
-    categories: Record<string, { quantity: number; revenue: number; orders: number }>;
-  }>;
-  previousYearTotalsByFamily?: Record<string, {
-    quantity: number;
-    revenue: number;
-    orders: number;
-    categories: Record<string, { quantity: number; revenue: number; orders: number }>;
-  }>;
-  previousMonthTotalsByFamily?: Record<string, {
-    quantity: number;
-    revenue: number;
-    orders: number;
-    categories: Record<string, { quantity: number; revenue: number; orders: number }>;
-  }>;
-}
-
-export const analyticsApi = {
-  summary: () => api.get<DashboardSummary>('/analytics/summary'),
-
-  margins: () =>
-    api.get<{ marginBands: Record<string, number>; total: number }>('/analytics/margins'),
-
-  sales: (
-    params: { days?: number; fromDate?: string; toDate?: string },
-    includeDaily: boolean = false,
-    includePreviousYear: boolean = false,
-    includeCategories: boolean = false,
-    includePreviousMonth: boolean = false
-  ) => {
-    const queryParts: string[] = [];
-    if (params.fromDate) queryParts.push(`fromDate=${params.fromDate}`);
-    if (params.toDate) queryParts.push(`toDate=${params.toDate}`);
-    if (params.days && !params.fromDate) queryParts.push(`days=${params.days}`);
-    if (includeDaily) queryParts.push('includeDaily=true');
-    if (includePreviousYear) queryParts.push('includePreviousYear=true');
-    if (includeCategories) queryParts.push('includeCategories=true');
-    if (includePreviousMonth) queryParts.push('includePreviousMonth=true');
-    return api.get<SalesResponse>(`/analytics/sales?${queryParts.join('&')}`);
-  },
-
-  insights: () => api.get<InsightsResponse>('/analytics/insights'),
-};
-
-// Import API
-export interface ImportResult {
-  updated: number;
-  notFoundInDb: number;
-  matchedByBalterleySku?: number;
-  total: number;
-  sampleNotFoundInDb?: string[];
-  dbProductsMissingFromFile: number;
-  sampleDbSkusMissingFromFile?: string[];
-}
-
-export interface DeliveryImportResult {
-  ordersProcessed: number;
-  ordersMatched: number;
-  ordersNotFound: number;
-  ordersSkipped: number;
-  excludedCarriers: string[];
-  carriersFound: string[];
-  newCarriersCreated: string[];
-  note: string;
-}
-
-export const importApi = {
-  costs: (data: Array<{ sku: string; costPrice: number; deliveryCost?: number }>) =>
-    api.post<ImportResult>('/import/costs', { data }),
-
-  delivery: (data: Array<{ orderNumber: string; parcels: number; carrier: string }>) =>
-    api.post<DeliveryImportResult>('/import/delivery', { data }),
-};
-
-// Carriers API
-export interface CarrierCost {
-  carrierId: string;
-  carrierName: string;
-  costPerParcel: number;
-  isActive: boolean;
-  lastUpdated: string;
-}
-
-export interface RecalculateResult {
-  ordersWithDeliveryData: number;
-  ordersProcessed: number;
-  ordersSkipped: number;
-  skusAnalyzed: number;
-  productsUpdated: number;
-  productsUnchanged: number;
-  updatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string }>;
-}
-
-export const carriersApi = {
-  list: () => api.get<{ items: CarrierCost[]; count: number }>('/carriers'),
-
-  // List carriers for a specific account (admin use)
-  listForAccount: (accountId: string) =>
-    api.getWithAccount<{ items: CarrierCost[]; count: number }>('/carriers', accountId),
-
-  get: (carrierId: string) => api.get<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`),
-
-  create: (data: Omit<CarrierCost, 'lastUpdated'>) =>
-    api.post<CarrierCost>('/carriers', data),
-
-  // Create carrier for a specific account (admin use)
-  createForAccount: (data: Omit<CarrierCost, 'lastUpdated'>, accountId: string) =>
-    api.postWithAccount<CarrierCost>('/carriers', data, accountId),
-
-  update: (carrierId: string, data: Partial<CarrierCost>) =>
-    api.put<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`, data),
-
-  // Update carrier for a specific account (admin use)
-  updateForAccount: (carrierId: string, data: Partial<CarrierCost>, accountId: string) =>
-    api.putWithAccount<CarrierCost>(`/carriers/${encodeURIComponent(carrierId)}`, data, accountId),
-
-  delete: (carrierId: string) => api.delete(`/carriers/${encodeURIComponent(carrierId)}`),
-
-  // Delete carrier for a specific account (admin use)
-  deleteForAccount: (carrierId: string, accountId: string) =>
-    api.deleteWithAccount(`/carriers/${encodeURIComponent(carrierId)}`, accountId),
-
-  recalculate: () => api.post<RecalculateResult>('/carriers/recalculate', {}),
-
-  // Recalculate for a specific account (admin use)
-  recalculateForAccount: (accountId: string) =>
-    api.postWithAccount<RecalculateResult>('/carriers/recalculate', {}, accountId),
-};
-
-// SKU History API
-export interface SkuHistoryRecord {
-  sku: string;
-  date: string;
-  price: number;
-  costPrice?: number;
-  stockLevel: number;
-  dailySales: number;
-  dailyRevenue: number;
-  margin?: number;
-  lowestCompetitorPrice?: number;
-  recordedAt: string;
-}
-
-export interface ChannelSalesData {
-  [date: string]: {
-    [channel: string]: { quantity: number; revenue: number };
-  };
-}
-
-export interface SkuHistoryResponse {
-  sku: string;
-  product: Product | null;
-  history: SkuHistoryRecord[];
-  channelSales?: ChannelSalesData;
-  fromDate: string;
-  toDate: string;
-  recordCount: number;
-}
-
-export const historyApi = {
-  get: (sku: string, fromDate?: string, toDate?: string, includeChannelSales?: boolean) => {
-    const params = new URLSearchParams();
-    if (fromDate) params.set('fromDate', fromDate);
-    if (toDate) params.set('toDate', toDate);
-    if (includeChannelSales) params.set('includeChannelSales', 'true');
-    const query = params.toString();
-    return api.get<SkuHistoryResponse>(`/history/${encodeURIComponent(sku)}${query ? `?${query}` : ''}`);
-  },
-};
-
-// Sync API
-export const syncApi = {
-  trigger: () => api.post('/sync'),
-};
-
-// Competitors API
-export interface CompetitorUrl {
-  id: string;
-  competitorName: string;
-  url: string;
-  lastPrice?: number;
-  lastScrapedAt?: string;
-  lastError?: string;
-}
-
-export interface ScrapeResult {
-  sku: string;
-  lowestPrice: number | null;
-  competitorUrls: CompetitorUrl[];
-  errors: string[];
-}
-
-export const competitorsApi = {
-  addUrl: (sku: string, url: string) =>
-    api.post<{ message: string; sku: string; competitorUrls: CompetitorUrl[] }>('/competitors/add-url', { sku, url }),
-
-  removeUrl: (sku: string, urlId: string) =>
-    api.delete<{ message: string; sku: string; competitorUrls: CompetitorUrl[] }>(
-      '/competitors/remove-url',
-      { sku, urlId }
-    ),
-
-  scrapeSingle: (sku: string) =>
-    api.post<ScrapeResult>(`/competitors/scrape/${encodeURIComponent(sku)}`),
-
-  scrapeAll: () =>
-    api.post<{ message: string; totalProducts: number; successCount: number; errorCount: number }>('/competitors/scrape'),
-};
-
-// Prices API
-export interface PriceUpdateResult {
-  success: boolean;
-  message: string;
-  sku: string;
-  channelId: string;
-  price: number;
-}
-
-// Price Change Audit types
-export type PriceChangeReason =
-  | 'manual'           // User manually edited price
-  | 'proposal_approved' // Price approved from proposal
-  | 'proposal_modified' // Price modified during approval
-  | 'bulk_update';      // Bulk approval operation
-
-export interface PriceChangeRecord {
-  accountId: string;
-  sku: string;
-  channelId: string;           // Channel affected (or "all" for average price)
-  previousPrice: number;
-  newPrice: number;
-  changedBy: string;           // User email
-  changedAt: string;           // ISO timestamp
-  reason: PriceChangeReason;
-  source: string;              // "ProductDetail", "Proposals", "API"
-  notes?: string;              // Optional user notes
-  proposalId?: string;         // Reference to proposal if applicable
-}
-
-export interface PriceChangeHistoryResponse {
-  items: PriceChangeRecord[];
-  count: number;
-  sku?: string;
-}
-
-export const pricesApi = {
-  updateChannelPrice: (sku: string, channelId: string, price: number) =>
-    api.put<PriceUpdateResult>(`/prices/${encodeURIComponent(sku)}`, { channelId, price }),
-
-  getRecentChanges: (limit: number = 100) =>
-    api.get<PriceChangeHistoryResponse>(`/prices/recent?limit=${limit}`),
-
-  getHistory: (sku: string, limit: number = 50) =>
-    api.get<PriceChangeHistoryResponse>(`/prices/${encodeURIComponent(sku)}/history?limit=${limit}`),
-};
-
-// V2: Accounts API (Super-admin only)
-export interface GoogleSheetsColumnMapping {
-  skuColumn: string;
-  pricingMode: 'single' | 'multi';
-  priceColumn?: string;
-  channelPriceColumns?: {
-    bnq?: string;
-    amazon?: string;
-    ebay?: string;
-    manomano?: string;
-    shopify?: string;
-  };
-  startRow?: number;
-  sheetName?: string;
-}
-
-export interface Account {
-  accountId: string;
-  name: string;
-  status: 'active' | 'suspended';
-  channelEngine?: {
-    apiKey: string;
-    tenantId: string;
-  };
-  googleSheets?: {
-    spreadsheetId: string;
-    columnMapping?: GoogleSheetsColumnMapping;
-  };
-  settings: {
-    channelFees: Record<string, number>;
-    defaultMargin: number;
-    currency: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const accountsApi = {
-  list: () => api.get<{ items: Account[]; count: number }>('/accounts'),
-
-  get: (accountId: string) => api.get<Account>(`/accounts/${encodeURIComponent(accountId)}`),
-
-  create: (data: Omit<Account, 'createdAt' | 'updatedAt'>) =>
-    api.post<Account>('/accounts', data),
-
-  update: (accountId: string, data: Partial<Account>) =>
-    api.put<Account>(`/accounts/${encodeURIComponent(accountId)}`, data),
-
-  delete: (accountId: string) =>
-    api.delete(`/accounts/${encodeURIComponent(accountId)}`),
-};
-
-// V2: Users API (Super-admin only)
-export interface User {
-  userId: string;
-  email: string;
-  name: string;
-  groups: string[];
-  allowedAccounts: string[];
-  defaultAccount?: string;
-  enabled: boolean;
-  status: 'CONFIRMED' | 'FORCE_CHANGE_PASSWORD' | 'RESET_REQUIRED' | 'UNCONFIRMED';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateUserRequest {
-  email: string;
-  givenName: string;
-  familyName: string;
-  groups: string[];
-  allowedAccounts: string[];
-  defaultAccount?: string;
-  temporaryPassword?: string;
-}
-
-export interface UpdateUserRequest {
-  name?: string;
-  groups?: string[];
-  allowedAccounts?: string[];
-  defaultAccount?: string;
-  enabled?: boolean;
-}
-
-export const usersApi = {
-  list: () => api.get<{ items: User[]; count: number }>('/users'),
-
-  get: (userId: string) => api.get<User>(`/users/${encodeURIComponent(userId)}`),
-
-  create: (data: CreateUserRequest) => api.post<User>('/users', data),
-
-  update: (userId: string, data: UpdateUserRequest) =>
-    api.put<User>(`/users/${encodeURIComponent(userId)}`, data),
-
-  delete: (userId: string) =>
-    api.delete(`/users/${encodeURIComponent(userId)}`),
-
-  enable: (userId: string) =>
-    api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/enable`),
-
-  resendInvitation: (userId: string) =>
-    api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/resend-invitation`),
-
-  resetPassword: (userId: string) =>
-    api.post<{ message: string }>(`/users/${encodeURIComponent(userId)}/reset-password`),
-};
+/**
+ * API module barrel export
+ *
+ * All API modules are re-exported here for backward compatibility.
+ * New code should import directly from the specific module.
+ */
+
+// Re-export the HTTP client
+export { api, getIdToken } from './client';
+
+// Products
+export { productsApi, type ProductWithSales } from './products';
+
+// Proposals
+export { proposalsApi, type ProposalFilters } from './proposals';
+
+// Analytics
+export {
+  analyticsApi,
+  type SalesData,
+  type InsightProduct,
+  type InsightCategory,
+  type InsightsResponse,
+  type SalesResponse,
+} from './analytics';
+
+// Admin (accounts, users)
+export {
+  accountsApi,
+  usersApi,
+  type Account,
+  type GoogleSheetsColumnMapping,
+  type User,
+  type CreateUserRequest,
+  type UpdateUserRequest,
+} from './admin';
+
+// Carriers
+export {
+  carriersApi,
+  type CarrierCost,
+  type RecalculateResult,
+} from './carriers';
+
+// Prices
+export {
+  pricesApi,
+  type PriceUpdateResult,
+  type PriceChangeReason,
+  type PriceChangeRecord,
+  type PriceChangeHistoryResponse,
+} from './prices';
+
+// Misc (rules, channels, import, history, sync, competitors)
+export {
+  rulesApi,
+  channelsApi,
+  importApi,
+  historyApi,
+  syncApi,
+  competitorsApi,
+  type ImportResult,
+  type DeliveryImportResult,
+  type SkuHistoryRecord,
+  type ChannelSalesData,
+  type SkuHistoryResponse,
+  type CompetitorUrl,
+  type ScrapeResult,
+} from './misc';

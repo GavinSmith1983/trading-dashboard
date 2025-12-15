@@ -24,7 +24,7 @@ const COGNITO_CONFIG = {
 
 const userPool = new CognitoUserPool(COGNITO_CONFIG);
 
-async function getIdToken(): Promise<string | null> {
+export async function getIdToken(): Promise<string | null> {
   return new Promise((resolve) => {
     const cognitoUser = userPool.getCurrentUser();
     if (!cognitoUser) {
