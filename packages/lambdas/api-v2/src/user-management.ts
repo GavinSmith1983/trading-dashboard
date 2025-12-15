@@ -13,6 +13,7 @@ import {
   AdminEnableUserCommand,
   AdminSetUserPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { randomBytes } from 'crypto';
 import { User, CreateUserRequest, UpdateUserRequest } from '@repricing/core';
 
 const cognitoClient = new CognitoIdentityProviderClient({});
@@ -319,7 +320,7 @@ export class UserManagementService {
   }
 
   /**
-   * Generate a random temporary password meeting Cognito requirements
+   * Generate a cryptographically secure temporary password meeting Cognito requirements
    */
   private generateTempPassword(): string {
     const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -328,20 +329,30 @@ export class UserManagementService {
     const special = '!@#$%^&*';
     const all = upper + lower + numbers + special;
 
-    let password = '';
-    // Ensure at least one of each required type
-    password += upper[Math.floor(Math.random() * upper.length)];
-    password += lower[Math.floor(Math.random() * lower.length)];
-    password += numbers[Math.floor(Math.random() * numbers.length)];
-    password += special[Math.floor(Math.random() * special.length)];
+    // Use crypto-secure random bytes
+    const randomBuf = randomBytes(16);
 
-    // Fill the rest randomly
-    for (let i = 0; i < 8; i++) {
-      password += all[Math.floor(Math.random() * all.length)];
+    // Ensure at least one of each required type using secure random
+    let password = '';
+    password += upper[randomBuf[0] % upper.length];
+    password += lower[randomBuf[1] % lower.length];
+    password += numbers[randomBuf[2] % numbers.length];
+    password += special[randomBuf[3] % special.length];
+
+    // Fill the rest with secure random characters
+    for (let i = 4; i < 12; i++) {
+      password += all[randomBuf[i] % all.length];
     }
 
-    // Shuffle the password
-    return password.split('').sort(() => Math.random() - 0.5).join('');
+    // Secure shuffle using Fisher-Yates with crypto random
+    const shuffleBuf = randomBytes(password.length);
+    const arr = password.split('');
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = shuffleBuf[i] % (i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+
+    return arr.join('');
   }
 
   /**

@@ -42,6 +42,10 @@ export class DynamoDBServiceV2 {
   private skuHistoryTable: string;
   private priceChangesTable: string;
 
+  // Cache for active accounts (reduces scan calls from scheduled lambdas)
+  private activeAccountsCache: { data: Account[]; timestamp: number } | null = null;
+  private static CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
   constructor(config: {
     accountsTable: string;
     productsTable: string;
@@ -90,6 +94,8 @@ export class DynamoDBServiceV2 {
         Item: { ...account, updatedAt: new Date().toISOString() },
       })
     );
+    // Invalidate cache when account is updated
+    this.invalidateAccountsCache();
   }
 
   async getAllAccounts(): Promise<Account[]> {
@@ -102,6 +108,13 @@ export class DynamoDBServiceV2 {
   }
 
   async getActiveAccounts(): Promise<Account[]> {
+    // Check if cache is valid (within TTL)
+    const now = Date.now();
+    if (this.activeAccountsCache && (now - this.activeAccountsCache.timestamp) < DynamoDBServiceV2.CACHE_TTL_MS) {
+      return this.activeAccountsCache.data;
+    }
+
+    // Fetch from database
     const result = await this.docClient.send(
       new ScanCommand({
         TableName: this.accountsTable,
@@ -110,7 +123,20 @@ export class DynamoDBServiceV2 {
         ExpressionAttributeValues: { ':active': 'active' },
       })
     );
-    return (result.Items as Account[]) || [];
+
+    const accounts = (result.Items as Account[]) || [];
+
+    // Update cache
+    this.activeAccountsCache = { data: accounts, timestamp: now };
+
+    return accounts;
+  }
+
+  /**
+   * Invalidate the active accounts cache (call when an account is updated)
+   */
+  invalidateAccountsCache(): void {
+    this.activeAccountsCache = null;
   }
 
   // ============ Products ============
@@ -337,38 +363,77 @@ export class DynamoDBServiceV2 {
     page: number = 1,
     pageSize: number = 50
   ): Promise<PaginatedProposals> {
-    // Query all proposals for the account
     let items: PriceProposal[] = [];
     let lastKey: Record<string, unknown> | undefined;
 
-    do {
-      const result = await this.docClient.send(
-        new QueryCommand({
-          TableName: this.proposalsTable,
-          KeyConditionExpression: 'accountId = :accountId',
-          ExpressionAttributeValues: { ':accountId': accountId },
-          ExclusiveStartKey: lastKey,
-        })
-      );
+    // Build filter expression for server-side filtering
+    const filterExpressions: string[] = [];
+    const expressionAttributeNames: Record<string, string> = {};
+    const expressionAttributeValues: Record<string, unknown> = {
+      ':accountId': accountId,
+    };
 
-      items = items.concat((result.Items as PriceProposal[]) || []);
-      lastKey = result.LastEvaluatedKey;
-    } while (lastKey);
+    // If single status filter, use the GSI for efficient querying
+    const singleStatus = filters.status && !Array.isArray(filters.status) ? filters.status :
+                         (Array.isArray(filters.status) && filters.status.length === 1 ? filters.status[0] : null);
 
-    // Apply filters client-side
-    if (filters.status) {
-      const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
-      items = items.filter((p) => statuses.includes(p.status));
+    if (singleStatus) {
+      // Use the by-account-status GSI for single status queries (most efficient)
+      do {
+        const result = await this.docClient.send(
+          new QueryCommand({
+            TableName: this.proposalsTable,
+            IndexName: 'by-account-status',
+            KeyConditionExpression: 'accountId = :accountId AND #status = :status',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: { ':accountId': accountId, ':status': singleStatus },
+            ExclusiveStartKey: lastKey,
+          })
+        );
+        items = items.concat((result.Items as PriceProposal[]) || []);
+        lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+    } else {
+      // Build filter expression for other filters
+      if (filters.status && Array.isArray(filters.status) && filters.status.length > 1) {
+        const statusConditions = filters.status.map((s, i) => {
+          expressionAttributeValues[`:status${i}`] = s;
+          return `#status = :status${i}`;
+        });
+        filterExpressions.push(`(${statusConditions.join(' OR ')})`);
+        expressionAttributeNames['#status'] = 'status';
+      }
+
+      if (filters.brand) {
+        filterExpressions.push('brand = :brand');
+        expressionAttributeValues[':brand'] = filters.brand;
+      }
+
+      if (filters.batchId) {
+        filterExpressions.push('batchId = :batchId');
+        expressionAttributeValues[':batchId'] = filters.batchId;
+      }
+
+      // Query with server-side filtering where possible
+      const filterExpression = filterExpressions.length > 0 ? filterExpressions.join(' AND ') : undefined;
+
+      do {
+        const result = await this.docClient.send(
+          new QueryCommand({
+            TableName: this.proposalsTable,
+            KeyConditionExpression: 'accountId = :accountId',
+            FilterExpression: filterExpression,
+            ExpressionAttributeNames: Object.keys(expressionAttributeNames).length > 0 ? expressionAttributeNames : undefined,
+            ExpressionAttributeValues: expressionAttributeValues,
+            ExclusiveStartKey: lastKey,
+          })
+        );
+        items = items.concat((result.Items as PriceProposal[]) || []);
+        lastKey = result.LastEvaluatedKey;
+      } while (lastKey);
     }
 
-    if (filters.brand) {
-      items = items.filter((p) => p.brand === filters.brand);
-    }
-
-    if (filters.batchId) {
-      items = items.filter((p) => p.batchId === filters.batchId);
-    }
-
+    // Apply remaining client-side filters that can't use FilterExpression efficiently
     if (filters.hasWarnings) {
       items = items.filter((p) => (p.warnings?.length || 0) > 0);
     }
@@ -425,6 +490,7 @@ export class DynamoDBServiceV2 {
     };
   }
 
+
   async updateProposalStatus(
     accountId: string,
     proposalId: string,
@@ -464,6 +530,50 @@ export class DynamoDBServiceV2 {
         ExpressionAttributeValues: expressionAttributeValues,
       })
     );
+  }
+
+  async deleteAllProposals(accountId: string): Promise<number> {
+    let deleted = 0;
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new QueryCommand({
+          TableName: this.proposalsTable,
+          KeyConditionExpression: 'accountId = :aid',
+          ExpressionAttributeValues: { ':aid': accountId },
+          ProjectionExpression: 'accountId, proposalId',
+          ExclusiveStartKey: lastEvaluatedKey,
+        })
+      );
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+      const items = result.Items || [];
+
+      if (items.length === 0) continue;
+
+      // Delete in batches of 25 (DynamoDB limit)
+      for (let i = 0; i < items.length; i += 25) {
+        const batch = items.slice(i, i + 25);
+        await this.docClient.send(
+          new BatchWriteCommand({
+            RequestItems: {
+              [this.proposalsTable]: batch.map((item) => ({
+                DeleteRequest: {
+                  Key: {
+                    accountId: item.accountId as string,
+                    proposalId: item.proposalId as string,
+                  },
+                },
+              })),
+            },
+          })
+        );
+        deleted += batch.length;
+      }
+    } while (lastEvaluatedKey);
+
+    return deleted;
   }
 
   // ============ Channels ============
@@ -771,6 +881,30 @@ export class DynamoDBServiceV2 {
         },
       })
     );
+  }
+
+  async batchPutSkuHistory(accountId: string, records: SkuHistoryRecord[]): Promise<void> {
+    if (records.length === 0) return;
+
+    const chunks = this.chunkArray(records, 25);
+
+    for (const chunk of chunks) {
+      await this.docClient.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [this.skuHistoryTable]: chunk.map((record) => ({
+              PutRequest: {
+                Item: {
+                  ...record,
+                  accountId,
+                  skuDate: `${record.sku}#${record.date}`,
+                },
+              },
+            })),
+          },
+        })
+      );
+    }
   }
 
   async getSkuHistory(

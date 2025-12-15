@@ -109,16 +109,15 @@ export async function handler(
   } catch (error) {
     console.error('API error:', error);
 
-    // Handle permission errors
+    // Handle permission errors with generic messages
     if (error instanceof Error) {
       if (error.message.includes('Access denied') || error.message.includes('required')) {
-        return response(403, { error: error.message });
+        return response(403, { error: 'Insufficient permissions' });
       }
     }
 
-    return response(500, {
-      error: error instanceof Error ? error.message : 'Internal server error',
-    });
+    // Never expose internal error details to clients
+    return response(500, { error: 'Internal server error' });
   }
 }
 
@@ -1890,10 +1889,69 @@ async function handleCostImport(
   accountId: string
 ): Promise<APIGatewayProxyResult> {
   const body = JSON.parse(event.body || '{}');
-  const csvData: Array<{ sku: string; costPrice: number; deliveryCost?: number }> = body.data;
-
-  if (!csvData || !Array.isArray(csvData)) {
+  // Validate and sanitize input data
+  if (!body.data || !Array.isArray(body.data)) {
     return response(400, { error: 'Invalid data format. Expected { data: [...] }' });
+  }
+
+  // Validate each row
+  const validationErrors: string[] = [];
+  const csvData: Array<{ sku: string; costPrice: number; deliveryCost?: number }> = [];
+
+  for (let i = 0; i < body.data.length; i++) {
+    const row = body.data[i];
+
+    // Validate SKU
+    if (!row.sku || typeof row.sku !== 'string') {
+      validationErrors.push(`Row ${i + 1}: Invalid or missing SKU`);
+      continue;
+    }
+    if (row.sku.length > 100) {
+      validationErrors.push(`Row ${i + 1}: SKU exceeds maximum length (100 chars)`);
+      continue;
+    }
+
+    // Validate costPrice
+    if (typeof row.costPrice !== 'number' || !isFinite(row.costPrice)) {
+      validationErrors.push(`Row ${i + 1}: costPrice must be a valid number`);
+      continue;
+    }
+    if (row.costPrice < 0) {
+      validationErrors.push(`Row ${i + 1}: costPrice cannot be negative`);
+      continue;
+    }
+    if (row.costPrice > 1000000) {
+      validationErrors.push(`Row ${i + 1}: costPrice exceeds maximum value`);
+      continue;
+    }
+
+    // Validate deliveryCost if provided
+    if (row.deliveryCost !== undefined && row.deliveryCost !== null) {
+      if (typeof row.deliveryCost !== 'number' || !isFinite(row.deliveryCost)) {
+        validationErrors.push(`Row ${i + 1}: deliveryCost must be a valid number`);
+        continue;
+      }
+      if (row.deliveryCost < 0) {
+        validationErrors.push(`Row ${i + 1}: deliveryCost cannot be negative`);
+        continue;
+      }
+    }
+
+    // Sanitize and add to valid data
+    csvData.push({
+      sku: row.sku.trim(),
+      costPrice: Math.round(row.costPrice * 100) / 100, // Round to 2 decimal places
+      deliveryCost: row.deliveryCost !== undefined ? Math.round(row.deliveryCost * 100) / 100 : undefined,
+    });
+  }
+
+  // Return validation errors if any
+  if (validationErrors.length > 0) {
+    return response(400, {
+      error: 'Validation errors in import data',
+      validationErrors: validationErrors.slice(0, 20), // Limit to first 20 errors
+      totalErrors: validationErrors.length,
+    });
   }
 
   console.log(`[Import:${accountId}] Processing ${csvData.length} cost records`);

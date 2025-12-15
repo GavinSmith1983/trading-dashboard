@@ -6,11 +6,16 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 
-// Cognito configuration
+// Cognito configuration - MUST be set via environment variables
 const COGNITO_CONFIG = {
-  UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || 'eu-west-2_t4tJsxt3z',
-  ClientId: import.meta.env.VITE_COGNITO_CLIENT_ID || '7c3s7gtdskn3nhpbivmsapgk74',
+  UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
+  ClientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
 };
+
+// Security: Fail fast if credentials are not configured
+if (!COGNITO_CONFIG.UserPoolId || !COGNITO_CONFIG.ClientId) {
+  throw new Error('Cognito configuration missing. Set VITE_COGNITO_USER_POOL_ID and VITE_COGNITO_CLIENT_ID environment variables.');
+}
 
 const userPool = new CognitoUserPool(COGNITO_CONFIG);
 

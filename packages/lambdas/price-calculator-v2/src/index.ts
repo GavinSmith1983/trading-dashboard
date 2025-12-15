@@ -173,12 +173,35 @@ async function calculatePricesForAccount(
 }
 
 /**
+ * Calculate current margin for a product (accounting for commission and VAT)
+ * Uses the same formula as pricing-engine.ts for consistency
+ */
+function calculateCurrentMargin(product: Product): number {
+  if (!product.currentPrice || product.currentPrice <= 0) return 0;
+
+  // Price ex VAT = selling price / 1.2
+  const priceExVat = product.currentPrice / 1.2;
+  // Channel commission = 20% of price ex VAT (clawback)
+  const channelCommission = priceExVat * 0.20;
+  // Fixed costs
+  const costPrice = product.costPrice || 0;
+  const deliveryCost = product.deliveryCost || 0;
+  // PPO (Post Payout) = Price ex VAT - commission - delivery - cost
+  const ppo = priceExVat - channelCommission - deliveryCost - costPrice;
+  // Margin % = PPO / Price ex VAT * 100
+  return priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
+}
+
+/**
  * Find the first matching rule for a product
  */
 function findMatchingRule(
   product: Product,
   rules: PricingRule[]
 ): PricingRule | undefined {
+  // Calculate current margin once for all rule checks
+  const currentMargin = calculateCurrentMargin(product);
+
   // Rules are sorted by priority
   for (const rule of rules) {
     if (!rule.isActive) continue;
@@ -203,6 +226,25 @@ function findMatchingRule(
       if (rule.conditions.priceBelow !== undefined && product.currentPrice >= rule.conditions.priceBelow)
         continue;
       if (rule.conditions.priceAbove !== undefined && product.currentPrice <= rule.conditions.priceAbove)
+        continue;
+
+      // Margin conditions (Bug fix: these were previously missing!)
+      if (rule.conditions.marginBelow !== undefined && currentMargin >= rule.conditions.marginBelow)
+        continue;
+      if (rule.conditions.marginAbove !== undefined && currentMargin <= rule.conditions.marginAbove)
+        continue;
+
+      // Stock conditions
+      if (rule.conditions.stockBelow !== undefined && product.stockLevel >= rule.conditions.stockBelow)
+        continue;
+      if (rule.conditions.stockAbove !== undefined && product.stockLevel <= rule.conditions.stockAbove)
+        continue;
+
+      // Sales velocity conditions (7-day totals)
+      const salesLast7Days = product.salesLast7Days || 0;
+      if (rule.conditions.salesVelocityBelow !== undefined && salesLast7Days >= rule.conditions.salesVelocityBelow)
+        continue;
+      if (rule.conditions.salesVelocityAbove !== undefined && salesLast7Days <= rule.conditions.salesVelocityAbove)
         continue;
     }
 
@@ -237,13 +279,29 @@ function calculatePrice(
     : (account.settings.defaultMargin * 100);
   const targetMargin = targetMarginPercent / 100;
 
-  // Calculate total cost
-  const totalCost = product.costPrice + (product.deliveryCost || 0);
+  // Calculate fixed costs (cost price + delivery)
+  const fixedCosts = product.costPrice + (product.deliveryCost || 0);
 
   // Calculate proposed price based on target margin
-  // margin = (price - cost) / price
-  // price = cost / (1 - margin)
-  let proposedPrice = totalCost / (1 - targetMargin);
+  // Uses correct formula accounting for channel commission (20%) and VAT (20%)
+  // Formula: PriceExVat = FixedCosts / (0.80 - Margin)
+  //          SellingPrice = PriceExVat * 1.2
+  //
+  // Derivation:
+  // - Margin = PPO / PriceExVat
+  // - PPO = PriceExVat * 0.80 - Delivery - Cost  (after 20% commission clawback)
+  // - Solving: PriceExVat = (Delivery + Cost) / (0.80 - Margin)
+  const divisor = 0.80 - targetMargin;
+
+  let proposedPrice: number;
+  if (divisor <= 0) {
+    // Cannot achieve target margin (>80%) - keep current price
+    warnings.push(`Cannot achieve ${targetMarginPercent}% margin - target too high`);
+    proposedPrice = product.currentPrice;
+  } else {
+    const priceExVat = fixedCosts / divisor;
+    proposedPrice = priceExVat * 1.2; // Add VAT
+  }
 
   // Apply rounding strategy from rule action
   const roundingRule = rule?.action?.roundingRule;
@@ -256,15 +314,24 @@ function calculatePrice(
     );
   }
 
-  // Calculate actual margin at proposed price
-  const margin = proposedPrice - totalCost;
-  const marginPercent = proposedPrice > 0 ? (margin / proposedPrice) * 100 : 0;
+  // Calculate actual margin at proposed price (using correct formula with commission/VAT)
+  const priceExVatProposed = proposedPrice / 1.2;
+  const commissionProposed = priceExVatProposed * 0.20;
+  const ppoProposed = priceExVatProposed - commissionProposed - fixedCosts;
+  const margin = ppoProposed;
+  const marginPercent = priceExVatProposed > 0 ? (ppoProposed / priceExVatProposed) * 100 : 0;
 
-  // Calculate weekly profit impact
+  // Calculate weekly profit impact (using actual PPO as profit)
   const sales = salesMap.get(product.sku);
   const avgDailySales = sales ? sales.quantity / 7 : 0;
-  const currentProfit = (product.currentPrice - totalCost) * avgDailySales * 7;
-  const proposedProfit = margin * avgDailySales * 7;
+
+  // Current profit calculation
+  const priceExVatCurrent = product.currentPrice / 1.2;
+  const commissionCurrent = priceExVatCurrent * 0.20;
+  const ppoCurrent = priceExVatCurrent - commissionCurrent - fixedCosts;
+
+  const currentProfit = ppoCurrent * avgDailySales * 7;
+  const proposedProfit = ppoProposed * avgDailySales * 7;
   const weeklyProfitImpact = proposedProfit - currentProfit;
 
   // Determine if we should create a proposal

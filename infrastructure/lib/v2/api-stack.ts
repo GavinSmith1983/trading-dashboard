@@ -26,12 +26,24 @@ export class ApiStackV2 extends cdk.Stack {
       description: 'Multi-tenant API for the repricing approval workflow',
       deployOptions: {
         stageName: 'prod',
-        throttlingBurstLimit: 100,
-        throttlingRateLimit: 50,
+        // Security: Reduced rate limits to prevent brute force attacks
+        throttlingBurstLimit: 20,
+        throttlingRateLimit: 10,
       },
       defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
+        // Security: Restrict CORS to known frontend domains only
+        allowOrigins: [
+          'https://d1stq5bxiu9ds3.cloudfront.net',  // Production CloudFront
+          'http://localhost:5173',                   // Local dev (Vite default)
+          'http://localhost:3000',                   // Local dev (alternative)
+        ],
+        allowMethods: [
+          'GET',
+          'POST',
+          'PUT',
+          'DELETE',
+          'OPTIONS',
+        ],
         allowHeaders: ['Content-Type', 'Authorization', 'X-Account-Id'],
       },
     });
