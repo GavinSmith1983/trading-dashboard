@@ -1,7 +1,7 @@
 # Trading Dashboard - Claude Instructions
 
 > Project-specific instructions for Claude AI sessions.
-> **Last Updated**: 2025-12-10
+> **Last Updated**: 2025-12-15
 
 ## Architecture Overview
 
@@ -209,6 +209,76 @@ Navigation items under Administration:
 - `DELETE /carriers/{id}` - Delete carrier
 - `POST /carriers/recalculate` - Recalculate delivery costs from orders
 
+## Frontend Architecture
+
+### Directory Structure
+```
+packages/frontend/src/
+├── api/                    # API client modules (split by domain)
+│   ├── index.ts           # Barrel export + shared config
+│   ├── products.ts        # Products API
+│   ├── proposals.ts       # Proposals API
+│   ├── analytics.ts       # Analytics/Sales API
+│   ├── admin.ts           # Accounts/Users API
+│   ├── carriers.ts        # Carriers/Delivery API
+│   ├── prices.ts          # Prices API
+│   └── misc.ts            # Import/Sync endpoints
+├── components/            # Reusable UI components
+│   ├── index.ts          # Barrel export
+│   ├── Badge.tsx, Button.tsx, Card.tsx, etc.
+│   ├── Modal.tsx         # Reusable modal with size variants
+│   └── charts/           # Chart components
+│       ├── index.ts
+│       └── ChartTooltip.tsx
+├── context/              # React context providers
+│   ├── AuthContext.tsx   # Authentication state
+│   └── AccountContext.tsx # Multi-tenant account selection
+├── hooks/                # Custom React hooks
+│   ├── index.ts         # Barrel export
+│   ├── useAccountQuery.ts
+│   ├── useDateRange.ts  # Date range selection with presets
+│   └── usePagination.ts # Client-side pagination
+├── pages/               # Page components (route handlers)
+├── types/               # TypeScript type definitions
+└── utils/               # Pure utility functions
+    ├── index.ts        # Barrel export
+    ├── format.ts       # formatCurrency, formatPrice, formatPercent
+    ├── dates.ts        # getDateRange, formatDate, getWeekStart
+    ├── calculations.ts # calculateMargin, getMarginColor
+    └── channels.ts     # CHANNEL_COLORS, getChannelDisplayName
+```
+
+### Key Architectural Decisions
+
+**1. API Split by Domain**
+- Each domain (products, proposals, analytics, etc.) has its own file
+- Reduces context needed when working on specific features
+- All files export through `api/index.ts` barrel
+
+**2. Shared Utilities**
+- Pure functions extracted to `utils/` folder
+- No React dependencies - can be used anywhere
+- Reduces duplication across pages
+
+**3. Custom Hooks**
+- `useDateRange`: Manages date range state with preset options (1M, 3M, 6M, etc.)
+- `usePagination`: Client-side pagination with page size options
+- Encapsulates complex state logic, makes pages cleaner
+
+**4. Component Library**
+- All components exported through `components/index.ts`
+- Modal component supports sm/md/lg/xl/full sizes
+- ChartTooltip provides consistent tooltip styling
+
+### Import Patterns
+```typescript
+// Import from barrel exports
+import { formatCurrency, formatDate, calculateMargin } from '../utils';
+import { Modal, Card, Table } from '../components';
+import { useDateRange, usePagination } from '../hooks';
+import { productsApi, analyticsApi } from '../api';
+```
+
 ## Common Commands
 
 ### TypeScript Check
@@ -277,6 +347,88 @@ const { data } = useQuery({
 });
 ```
 
+## Security Improvements (2025-12-15)
+
+### CORS Restrictions
+**File**: `infrastructure/lib/v2/api-stack.ts`
+
+CORS is now restricted to specific origins:
+- `https://d1stq5bxiu9ds3.cloudfront.net` (production)
+- `http://localhost:5173` (Vite dev server)
+- `http://localhost:3000` (alternative dev server)
+
+### API Rate Limiting
+**File**: `infrastructure/lib/v2/api-stack.ts`
+
+Rate limits reduced to prevent abuse:
+- **Rate Limit**: 10 requests/second (was 50)
+- **Burst Limit**: 20 requests (was 100)
+
+### Cognito Configuration
+**File**: `packages/frontend/src/context/AuthContext.tsx`
+
+Cognito credentials now loaded from environment variables:
+```typescript
+const COGNITO_CONFIG = {
+  UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
+  ClientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
+};
+```
+
+Required `.env` file:
+```
+VITE_COGNITO_USER_POOL_ID=eu-west-2_XPGjaZEIp
+VITE_COGNITO_CLIENT_ID=<your-client-id>
+```
+
+### Cryptographically Secure Password Generation
+**File**: `packages/lambdas/api-v2/src/user-management.ts`
+
+Temporary passwords now use `crypto.randomBytes()` instead of `Math.random()`.
+
+### CSV Import Validation
+**File**: `packages/lambdas/api-v2/src/index.ts`
+
+CSV imports now validate:
+- Maximum 10,000 rows
+- Maximum 1MB file size
+- Required columns present
+- Valid numeric values
+
+### Generic Error Messages
+**File**: `packages/lambdas/api-v2/src/index.ts`
+
+API errors now return generic messages in production to prevent information leakage.
+
+## Efficiency Improvements (2025-12-15)
+
+### DynamoDB Query Optimization
+**File**: `packages/core/src/services/dynamodb-v2.ts`
+
+**queryProposals**: Added `FilterExpression` for server-side filtering:
+```typescript
+FilterExpression: 'attribute_exists(proposedPrice) AND #status <> :rejected',
+```
+- Uses GSI instead of full table scan
+- Reduces data transfer
+
+**batchPutSkuHistory**: New method for bulk writes:
+```typescript
+async batchPutSkuHistory(accountId: string, entries: SkuHistoryEntry[]): Promise<void>
+```
+- Writes up to 25 items per batch (DynamoDB limit)
+- More efficient than individual puts
+
+### Account Cache
+**File**: `packages/core/src/services/dynamodb-v2.ts`
+
+`getActiveAccounts()` now cached for 5 minutes:
+```typescript
+private activeAccountsCache: { data: Account[]; timestamp: number } | null = null;
+private static CACHE_TTL_MS = 5 * 60 * 1000;
+```
+- Prevents repeated scans during multi-tenant operations
+
 ## Important Notes
 
 ### Order Sync Lambda
@@ -310,11 +462,20 @@ Git save points for easy rollback if needed:
 
 | Commit | Date | Description |
 |--------|------|-------------|
+| `ba896d5` | 2025-12-15 | Frontend refactor Stage 3: Shared hooks and components |
+| `30a9509` | 2025-12-15 | Frontend refactor Stage 2: Split API into domain modules |
+| `237a63f` | 2025-12-15 | Frontend refactor Stage 1: Add shared utilities |
+| `0da1373` | 2025-12-15 | Security and efficiency improvements |
+| `0c50daf` | 2025-12-15 | Performance: Products page 55s to 5s (10x improvement) |
+| `d3ebe25` | 2025-12-10 | Remove V1 infrastructure completely |
 | `384f65f` | 2025-12-10 | Admin Delivery Costs, Price History fix, Documentation |
 | `fae9963` | 2025-12-10 | User management, Akeneo multi-account sync, UI improvements |
-| `8398597` | 2025-12-10 | Akeneo PIM integration and Sales by Family chart |
-| `c6b6c73` | 2025-12-09 | V2 Multi-Tenant Architecture Complete |
-| `72d2e1d` | 2025-12-09 | Complete Trading Dashboard with all features |
+
+### Git Tags
+| Tag | Description |
+|-----|-------------|
+| `backup-pre-refactor-2025-12-15` | Before frontend restructuring |
+| `savepoint-2025-12-08` | Initial stable V2 deployment |
 
 ### How to Rollback
 ```bash

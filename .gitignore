@@ -153,9 +153,13 @@ packages/lambdas/**/dist/
 *.json.bak
 response.json
 output.json
+output*.json
 orders.json
 backfill-result.json
 data-sync-result.json
+tempbackfill-output.json
+history-backfill.json
+nul
 
 # Build artifacts
 deploy-api-temp/

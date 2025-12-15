@@ -482,15 +482,20 @@ async function handleProposals(
   const proposalId = getPathParam(event.path, 1);
 
   if (path === '/proposals/status-counts' && method === 'GET') {
-    // Get status counts
-    const proposals = await db.queryProposals(accountId, {});
+    // Get status counts - fetch ALL proposals (not paginated) to get accurate counts
+    const proposals = await db.queryProposals(accountId, {}, 1, 100000);
     const counts = {
       pending: 0,
       approved: 0,
+      modified: 0,
       rejected: 0,
       pushed: 0,
+      totalApproved: 0, // approved + modified combined for the "Approved" card
     };
     for (const p of proposals.items) {
+      if (p.status === 'approved' || p.status === 'modified') {
+        counts.totalApproved++;
+      }
       counts[p.status as keyof typeof counts]++;
     }
     return response(200, counts);
