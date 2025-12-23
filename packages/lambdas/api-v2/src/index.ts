@@ -1,4 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import {
   createDynamoDBServiceV2,
   Account,
@@ -11,8 +13,14 @@ import {
   normalizeCarrierName,
   isExcludedCarrier,
   CarrierCost,
+  scrapeProductCompetitors,
 } from '@repricing/core';
 import { v4 as uuid } from 'uuid';
+
+const lambdaClient = new LambdaClient({});
+const s3Client = new S3Client({});
+const IMPORT_DATA_BUCKET = process.env.IMPORT_DATA_BUCKET || 'repricing-v2-exports-610274502245';
+
 import {
   extractAccountContext,
   requireAccountContext,
@@ -42,9 +50,36 @@ function getPathParam(path: string, position: number): string | undefined {
  * Multi-tenant aware - all operations scoped to account
  */
 export async function handler(
-  event: APIGatewayProxyEvent,
+  event: APIGatewayProxyEvent & { asyncImport?: { jobId: string; type: 'costs' } },
   context: Context
 ): Promise<APIGatewayProxyResult> {
+  // Handle async import invocation (triggered by self-invoke)
+  if (event.asyncImport) {
+    const { jobId, type } = event.asyncImport;
+    console.log(`[AsyncImport] Processing job ${jobId}`);
+    try {
+      // Fetch import data from S3
+      const s3Key = `import-jobs/${jobId}.json`;
+      const getResponse = await s3Client.send(new GetObjectCommand({
+        Bucket: IMPORT_DATA_BUCKET,
+        Key: s3Key,
+      }));
+      const csvData = JSON.parse(await getResponse.Body!.transformToString());
+      console.log(`[AsyncImport] Loaded ${csvData.length} records from S3`);
+
+      const result = await processAsyncCostImport(csvData, jobId);
+      await db.completeImportJob(jobId, 'completed', result);
+      console.log(`[AsyncImport] Job ${jobId} completed. S3 file kept for debugging: s3://${IMPORT_DATA_BUCKET}/${s3Key}`);
+    } catch (error) {
+      console.error(`[AsyncImport] Job ${jobId} failed:`, error);
+      await db.completeImportJob(jobId, 'failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+    // Return empty response for async invocation
+    return response(200, { message: 'Async import processed' });
+  }
+
   console.log('V2 API request:', {
     method: event.httpMethod,
     path: event.path,
@@ -97,6 +132,9 @@ export async function handler(
     }
     if (path.startsWith('/history')) {
       return handleHistory(event, ctx);
+    }
+    if (path.startsWith('/competitors')) {
+      return handleCompetitors(event, ctx);
     }
     if (path.startsWith('/prices')) {
       return handlePrices(event, ctx);
@@ -250,15 +288,24 @@ async function handleAccounts(
       ...existing,
       name: body.name ?? existing.name,
       status: body.status ?? existing.status,
-      channelEngine: body.channelEngine
+      dataSource: body.dataSource ?? existing.dataSource,
+      channelEngine: body.channelEngine && existing.channelEngine
         ? { ...existing.channelEngine, ...body.channelEngine }
-        : existing.channelEngine,
-      googleSheets: body.googleSheets
+        : body.channelEngine
+          ? { apiKey: body.channelEngine.apiKey!, tenantId: body.channelEngine.tenantId! }
+          : existing.channelEngine,
+      csCart: body.csCart && existing.csCart
+        ? { ...existing.csCart, ...body.csCart }
+        : body.csCart
+          ? { baseUrl: body.csCart.baseUrl!, email: body.csCart.email!, apiKey: body.csCart.apiKey!, companyId: body.csCart.companyId }
+          : existing.csCart,
+      googleSheets: body.googleSheets && existing.googleSheets
         ? { ...existing.googleSheets, ...body.googleSheets }
         : existing.googleSheets,
       settings: body.settings
         ? { ...existing.settings, ...body.settings }
         : existing.settings,
+      orderNumberPrefix: body.orderNumberPrefix ?? existing.orderNumberPrefix,
       updatedAt: new Date().toISOString(),
     };
 
@@ -395,8 +442,8 @@ async function handleProducts(
       const fromDateStr = fromDate.toISOString().substring(0, 10);
       const toDateStr = today.toISOString().substring(0, 10);
 
-      const orderLines = await db.getOrderLinesByDateRange(accountId, fromDateStr, toDateStr);
-      console.log(`getOrderLinesByDateRange took ${Date.now() - salesStart}ms for ${orderLines.length} lines`);
+      const orderLines = await db.getOrderLinesForAggregation(accountId, fromDateStr, toDateStr);
+      console.log(`getOrderLinesForAggregation took ${Date.now() - salesStart}ms for ${orderLines.length} lines`);
 
       // Aggregate by SKU
       for (const line of orderLines) {
@@ -747,8 +794,14 @@ async function handleAnalytics(
   const path = event.path;
 
   if (path === '/analytics/summary') {
-    const products = await db.getAllProducts(accountId);
-    const proposals = await db.queryProposals(accountId, {});
+    const [products, proposals, account] = await Promise.all([
+      db.getAllProducts(accountId),
+      db.queryProposals(accountId, {}),
+      db.getAccount(accountId),
+    ]);
+
+    // Get channel fee percentage from account settings (default: 15%)
+    const channelFeePercent = account?.settings?.defaultChannelFeePercent ?? 15;
 
     // Calculate products with/without costs
     const productsWithCosts = products.filter((p) => p.costPrice && p.costPrice > 0).length;
@@ -763,7 +816,7 @@ async function handleAnalytics(
       if (!p.currentPrice || p.currentPrice <= 0) return 0;
       if (!p.costPrice || p.costPrice <= 0) return 0;
       const priceExVat = p.currentPrice / 1.2; // Remove 20% VAT
-      const channelFee = priceExVat * 0.15; // ~15% average channel fee
+      const channelFee = priceExVat * (channelFeePercent / 100); // Use account-specific channel fee
       const totalCost = (p.costPrice || 0) + (p.deliveryCost || 0) + channelFee;
       const profit = priceExVat - totalCost;
       return (profit / priceExVat) * 100;
@@ -794,6 +847,12 @@ async function handleAnalytics(
     const includeDaily = params.includeDaily === 'true';
     const includePreviousYear = params.includePreviousYear === 'true';
     const includePreviousMonth = params.includePreviousMonth === 'true';
+    const includePreviousWeek = params.includePreviousWeek === 'true';
+    const includeAvgSameWeekday = params.includeAvgSameWeekday === 'true';
+    const includeBrands = params.includeBrands === 'true';
+    const includeCategories = params.includeCategories === 'true';
+    const includeDrilldown = params.includeDrilldown === 'true';
+    const includeStockCodes = params.includeStockCodes === 'true';
 
     // Calculate date range - use fromDate/toDate if provided, otherwise calculate from days
     const today = new Date();
@@ -819,7 +878,7 @@ async function handleAnalytics(
     }
 
     // Get order lines for the date range
-    const orderLines = await db.getOrderLinesByDateRange(accountId, fromDateStr, toDateStr);
+    const orderLines = await db.getOrderLinesForAggregation(accountId, fromDateStr, toDateStr);
 
     // Also fetch previous year data if requested
     let previousYearOrderLines: typeof orderLines = [];
@@ -832,7 +891,7 @@ async function handleAnalytics(
       previousYearToDate.setFullYear(previousYearToDate.getFullYear() - 1);
       previousYearFromDateStr = previousYearFromDate.toISOString().substring(0, 10);
       previousYearToDateStr = previousYearToDate.toISOString().substring(0, 10);
-      previousYearOrderLines = await db.getOrderLinesByDateRange(accountId, previousYearFromDateStr, previousYearToDateStr);
+      previousYearOrderLines = await db.getOrderLinesForAggregation(accountId, previousYearFromDateStr, previousYearToDateStr);
     }
 
     // Also fetch previous month data if requested
@@ -846,15 +905,94 @@ async function handleAnalytics(
       previousMonthToDate.setMonth(previousMonthToDate.getMonth() - 1);
       previousMonthFromDateStr = previousMonthFromDate.toISOString().substring(0, 10);
       previousMonthToDateStr = previousMonthToDate.toISOString().substring(0, 10);
-      previousMonthOrderLines = await db.getOrderLinesByDateRange(accountId, previousMonthFromDateStr, previousMonthToDateStr);
+      previousMonthOrderLines = await db.getOrderLinesForAggregation(accountId, previousMonthFromDateStr, previousMonthToDateStr);
     }
 
-    // Aggregate by SKU, channel, and optionally by day
+    // Also fetch previous week data if requested
+    let previousWeekOrderLines: typeof orderLines = [];
+    let previousWeekFromDateStr = '';
+    let previousWeekToDateStr = '';
+    if (includePreviousWeek) {
+      const previousWeekFromDate = new Date(fromDateStr);
+      previousWeekFromDate.setDate(previousWeekFromDate.getDate() - 7);
+      const previousWeekToDate = new Date(toDateStr);
+      previousWeekToDate.setDate(previousWeekToDate.getDate() - 7);
+      previousWeekFromDateStr = previousWeekFromDate.toISOString().substring(0, 10);
+      previousWeekToDateStr = previousWeekToDate.toISOString().substring(0, 10);
+      previousWeekOrderLines = await db.getOrderLinesForAggregation(accountId, previousWeekFromDateStr, previousWeekToDateStr);
+    }
+
+    // Also fetch average same weekday data if requested (last 6 occurrences of same weekday)
+    // Pro-rated: only include orders from before the current time of day
+    let avgSameWeekdayOrderLines: typeof orderLines = [];
+    let avgSameWeekdayDates: string[] = [];
+    if (includeAvgSameWeekday) {
+      // Get current time to filter historical orders (pro-rated comparison)
+      const now = new Date();
+      const currentTimeStr = now.toISOString().substring(11, 19); // HH:MM:SS
+      console.log('AvgSameWeekday: Current time filter:', currentTimeStr);
+
+      // Get data from last 6 same weekdays (going back 7, 14, 21, 28, 35, 42 days)
+      const fromDate = new Date(fromDateStr);
+      for (let i = 1; i <= 6; i++) {
+        const pastDate = new Date(fromDate);
+        pastDate.setDate(pastDate.getDate() - (7 * i));
+        const pastDateStr = pastDate.toISOString().substring(0, 10);
+        avgSameWeekdayDates.push(pastDateStr);
+        const pastOrderLines = await db.getOrderLinesForAggregation(accountId, pastDateStr, pastDateStr);
+
+        // Filter to only include orders that occurred before the current time of day
+        // orderDate format: "ISO-timestamp#orderId" e.g. "2025-01-15T14:30:00.000Z#12345"
+        const filteredLines = pastOrderLines.filter(line => {
+          if (!line.orderDate || line.orderDate.length < 19) {
+            return true; // Include if no timestamp available
+          }
+          const orderTimeStr = line.orderDate.substring(11, 19); // Extract HH:MM:SS
+          return orderTimeStr <= currentTimeStr;
+        });
+
+        console.log(`AvgSameWeekday: ${pastDateStr} - ${pastOrderLines.length} total, ${filteredLines.length} after time filter`);
+        avgSameWeekdayOrderLines = avgSameWeekdayOrderLines.concat(filteredLines);
+      }
+    }
+
+    // Build SKU maps for brand, family/category, and title
+    // Fetch products if any feature needs them
+    let skuToBrand: Record<string, string> = {};
+    let skuToProduct: Record<string, { title: string; family: string; category: string; brand: string; stockCode?: string }> = {};
+    const needsProducts = includeBrands || includeCategories || includeDrilldown || includeStockCodes;
+
+    if (needsProducts) {
+      const products = await db.getAllProducts(accountId);
+      for (const product of products) {
+        if (product.sku) {
+          if (product.brand) {
+            skuToBrand[product.sku] = product.brand;
+          }
+          skuToProduct[product.sku] = {
+            title: product.title || product.sku,
+            family: product.familyLabel || product.family || 'Uncategorized',
+            category: product.subcategory || product.category || 'Other',
+            brand: product.brand || 'Unknown',
+            stockCode: product.stockCode,
+          };
+        }
+      }
+    }
+
+    // Aggregate by SKU, channel, brand, stockCode, and optionally by day
     const salesBySku: Record<string, { quantity: number; revenue: number }> = {};
     const totalsByChannel: Record<string, { quantity: number; revenue: number; orders: number }> = {};
+    const totalsByBrand: Record<string, { quantity: number; revenue: number; orders: number }> = {};
+    const totalsByStockCode: Record<string, { stockCode: string; quantity: number; revenue: number; orders: number; skus: string[] }> = {};
     const dailySales: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>> = {};
+    const dailySalesByBrand: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>> = {};
+    const dailySalesByStockCode: Record<string, Record<string, { quantity: number; revenue: number; orders: number }>> = {};
     const orderIdsByDate: Record<string, Set<string>> = {};
     const allOrderIds = new Set<string>();
+    const brandOrderIds = new Set<string>();
+    const stockCodeOrderIds = new Set<string>();
+    const stockCodeSkus: Record<string, Set<string>> = {};
 
     for (const line of orderLines) {
       const sku = line.sku;
@@ -881,6 +1019,73 @@ async function handleAnalytics(
       if (!allOrderIds.has(orderKey)) {
         allOrderIds.add(orderKey);
         totalsByChannel[channel].orders++;
+      }
+
+      // Brand aggregation (if requested)
+      if (includeBrands) {
+        const brand = skuToBrand[sku] || 'Unknown';
+        if (!totalsByBrand[brand]) {
+          totalsByBrand[brand] = { quantity: 0, revenue: 0, orders: 0 };
+        }
+        totalsByBrand[brand].quantity += line.quantity || 0;
+        totalsByBrand[brand].revenue += line.lineTotalInclVat || 0;
+
+        // Track unique orders per brand
+        const brandOrderKey = `${brand}:${orderId}`;
+        if (!brandOrderIds.has(brandOrderKey)) {
+          brandOrderIds.add(brandOrderKey);
+          totalsByBrand[brand].orders++;
+        }
+
+        // Daily brand aggregation (if daily is also requested)
+        if (includeDaily && dateDay) {
+          if (!dailySalesByBrand[dateDay]) {
+            dailySalesByBrand[dateDay] = {};
+          }
+          if (!dailySalesByBrand[dateDay][brand]) {
+            dailySalesByBrand[dateDay][brand] = { quantity: 0, revenue: 0, orders: 0 };
+          }
+          dailySalesByBrand[dateDay][brand].quantity += line.quantity || 0;
+          dailySalesByBrand[dateDay][brand].revenue += line.lineTotalInclVat || 0;
+          // Orders tracked at brand level above
+        }
+      }
+
+      // Stock Code aggregation (if requested) - groups Sales Codes under their parent Stock Code
+      if (includeStockCodes) {
+        const productInfo = skuToProduct[sku];
+        const stockCode = productInfo?.stockCode || sku; // Fall back to SKU if no stockCode
+
+        if (!totalsByStockCode[stockCode]) {
+          totalsByStockCode[stockCode] = { stockCode, quantity: 0, revenue: 0, orders: 0, skus: [] };
+          stockCodeSkus[stockCode] = new Set();
+        }
+        totalsByStockCode[stockCode].quantity += line.quantity || 0;
+        totalsByStockCode[stockCode].revenue += line.lineTotalInclVat || 0;
+
+        // Track unique SKUs under this stockCode
+        if (!stockCodeSkus[stockCode].has(sku)) {
+          stockCodeSkus[stockCode].add(sku);
+        }
+
+        // Track unique orders per stockCode
+        const stockCodeOrderKey = `${stockCode}:${orderId}`;
+        if (!stockCodeOrderIds.has(stockCodeOrderKey)) {
+          stockCodeOrderIds.add(stockCodeOrderKey);
+          totalsByStockCode[stockCode].orders++;
+        }
+
+        // Daily stockCode aggregation (if daily is also requested)
+        if (includeDaily && dateDay) {
+          if (!dailySalesByStockCode[dateDay]) {
+            dailySalesByStockCode[dateDay] = {};
+          }
+          if (!dailySalesByStockCode[dateDay][stockCode]) {
+            dailySalesByStockCode[dateDay][stockCode] = { quantity: 0, revenue: 0, orders: 0 };
+          }
+          dailySalesByStockCode[dateDay][stockCode].quantity += line.quantity || 0;
+          dailySalesByStockCode[dateDay][stockCode].revenue += line.lineTotalInclVat || 0;
+        }
       }
 
       // Daily aggregation (if requested)
@@ -1051,67 +1256,148 @@ async function handleAnalytics(
       };
     }
 
+    // Process previous week data if requested
+    let previousWeekTotals: { quantity: number; revenue: number; orders: number } | undefined;
+    if (includePreviousWeek && previousWeekOrderLines.length > 0) {
+      let pwTotalQuantity = 0;
+      let pwTotalRevenue = 0;
+      let pwTotalOrders = 0;
+      const pwAllOrderIds = new Set<string>();
+
+      for (const line of previousWeekOrderLines) {
+        const orderId = line.orderId || '';
+        pwTotalQuantity += line.quantity || 0;
+        pwTotalRevenue += line.lineTotalInclVat || 0;
+        if (!pwAllOrderIds.has(orderId)) {
+          pwAllOrderIds.add(orderId);
+          pwTotalOrders++;
+        }
+      }
+
+      previousWeekTotals = {
+        quantity: pwTotalQuantity,
+        revenue: Math.round(pwTotalRevenue * 100) / 100,
+        orders: pwTotalOrders,
+      };
+    }
+
+    // Process average same weekday data if requested (average of last 6 same weekdays)
+    let avgSameWeekdayTotals: { quantity: number; revenue: number; orders: number } | undefined;
+    if (includeAvgSameWeekday && avgSameWeekdayOrderLines.length > 0) {
+      let totalQuantity = 0;
+      let totalRevenue = 0;
+      let totalOrders = 0;
+      const allOrderIds = new Set<string>();
+
+      for (const line of avgSameWeekdayOrderLines) {
+        const orderId = line.orderId || '';
+        totalQuantity += line.quantity || 0;
+        totalRevenue += line.lineTotalInclVat || 0;
+        if (!allOrderIds.has(orderId)) {
+          allOrderIds.add(orderId);
+          totalOrders++;
+        }
+      }
+
+      // Divide by 6 to get average
+      avgSameWeekdayTotals = {
+        quantity: Math.round(totalQuantity / 6),
+        revenue: Math.round((totalRevenue / 6) * 100) / 100,
+        orders: Math.round(totalOrders / 6),
+      };
+    }
+
     // Build family/category breakdown by joining with products
     // Family = primary categorisation from Akeneo PIM (e.g., "Furniture", "Showers")
     // Category = subcategory (e.g., "Vanity Units", "Mirror Cabinets")
-    const includeCategories = params.includeCategories === 'true';
-    let totalsByFamily: Record<string, {
+
+    // SKU summary type for drilldown
+    interface SkuSummary {
+      sku: string;
+      title: string;
       quantity: number;
       revenue: number;
       orders: number;
-      categories: Record<string, { quantity: number; revenue: number; orders: number }>;
-    }> | undefined;
+    }
+
+    // Category type with optional SKUs
+    interface CategoryData {
+      quantity: number;
+      revenue: number;
+      orders: number;
+      skus?: SkuSummary[];
+      totalSkuCount?: number;
+    }
+
+    // Family type
+    interface FamilyData {
+      quantity: number;
+      revenue: number;
+      orders: number;
+      categories: Record<string, CategoryData>;
+    }
+
+    // Channel drilldown type
+    interface ChannelDrilldownData {
+      quantity: number;
+      revenue: number;
+      orders: number;
+      families: Record<string, FamilyData>;
+    }
+
+    let totalsByFamily: Record<string, FamilyData> | undefined;
     let dailySalesByFamily: Record<string, Record<string, { quantity: number; revenue: number }>> | undefined;
-    let previousYearTotalsByFamily: Record<string, {
-      quantity: number;
-      revenue: number;
-      orders: number;
-      categories: Record<string, { quantity: number; revenue: number; orders: number }>;
-    }> | undefined;
-    let previousMonthTotalsByFamily: Record<string, {
-      quantity: number;
-      revenue: number;
-      orders: number;
-      categories: Record<string, { quantity: number; revenue: number; orders: number }>;
-    }> | undefined;
+    let previousYearTotalsByFamily: Record<string, FamilyData> | undefined;
+    let previousMonthTotalsByFamily: Record<string, FamilyData> | undefined;
+    let totalsByChannelDrilldown: Record<string, ChannelDrilldownData> | undefined;
 
-    if (includeCategories) {
-      // Get all products to map SKU -> family and category
-      const products = await db.getAllProducts(accountId);
-      const skuToFamilyCategory: Record<string, { family: string; category: string }> = {};
-      for (const product of products) {
-        skuToFamilyCategory[product.sku] = {
-          family: product.family || 'Uncategorized',
-          category: product.subcategory || product.category || 'Other',
-        };
-      }
+    // Helper to get or create a SKU map for tracking during aggregation
+    type SkuTracker = Map<string, { sku: string; title: string; quantity: number; revenue: number; orderIds: Set<string> }>;
 
+    if (includeCategories || includeDrilldown) {
       // Current period family aggregation with nested categories
       totalsByFamily = {};
       const familyOrderIds: Record<string, Set<string>> = {};
       const categoryOrderIds: Record<string, Record<string, Set<string>>> = {};
+
+      // SKU tracking for drilldown (family -> category -> SKU map)
+      const categorySkuTrackers: Record<string, Record<string, SkuTracker>> = {};
 
       // Daily sales by family (same structure as dailySales but by family)
       if (includeDaily) {
         dailySalesByFamily = {};
       }
 
+      // Channel drilldown tracking
+      if (includeDrilldown) {
+        totalsByChannelDrilldown = {};
+      }
+      const channelOrderIds: Record<string, Set<string>> = {};
+      const channelFamilyOrderIds: Record<string, Record<string, Set<string>>> = {};
+      const channelCategoryOrderIds: Record<string, Record<string, Record<string, Set<string>>>> = {};
+      const channelCategorySkuTrackers: Record<string, Record<string, Record<string, SkuTracker>>> = {};
+
       for (const line of orderLines) {
-        const { family, category } = skuToFamilyCategory[line.sku] || { family: 'Uncategorized', category: 'Other' };
+        const productInfo = skuToProduct[line.sku] || { title: line.sku, family: 'Uncategorized', category: 'Other', brand: 'Unknown' };
+        const { family, category, title } = productInfo;
         const orderId = line.orderId || '';
         const dateDay = line.orderDateDay || '';
+        const channel = line.channelName || 'Unknown';
+        const sku = line.sku;
 
         // Initialize family if needed
         if (!totalsByFamily[family]) {
           totalsByFamily[family] = { quantity: 0, revenue: 0, orders: 0, categories: {} };
           familyOrderIds[family] = new Set();
           categoryOrderIds[family] = {};
+          categorySkuTrackers[family] = {};
         }
 
         // Initialize category within family if needed
         if (!totalsByFamily[family].categories[category]) {
           totalsByFamily[family].categories[category] = { quantity: 0, revenue: 0, orders: 0 };
           categoryOrderIds[family][category] = new Set();
+          categorySkuTrackers[family][category] = new Map();
         }
 
         // Aggregate at family level
@@ -1136,6 +1422,18 @@ async function handleAnalytics(
           totalsByFamily[family].categories[category].orders++;
         }
 
+        // SKU aggregation within category (for drilldown)
+        if (includeDrilldown) {
+          const skuTracker = categorySkuTrackers[family][category];
+          if (!skuTracker.has(sku)) {
+            skuTracker.set(sku, { sku, title, quantity: 0, revenue: 0, orderIds: new Set() });
+          }
+          const skuData = skuTracker.get(sku)!;
+          skuData.quantity += line.quantity || 0;
+          skuData.revenue += line.lineTotalInclVat || 0;
+          skuData.orderIds.add(orderId);
+        }
+
         // Daily aggregation by family (for chart - keep flat by family only)
         if (includeDaily && dateDay && dailySalesByFamily) {
           if (!dailySalesByFamily[dateDay]) {
@@ -1147,6 +1445,106 @@ async function handleAnalytics(
           dailySalesByFamily[dateDay][family].quantity += line.quantity || 0;
           dailySalesByFamily[dateDay][family].revenue += line.lineTotalInclVat || 0;
         }
+
+        // Channel drilldown aggregation (Channel -> Family -> Category -> SKU)
+        if (includeDrilldown && totalsByChannelDrilldown) {
+          // Initialize channel
+          if (!totalsByChannelDrilldown[channel]) {
+            totalsByChannelDrilldown[channel] = { quantity: 0, revenue: 0, orders: 0, families: {} };
+            channelOrderIds[channel] = new Set();
+            channelFamilyOrderIds[channel] = {};
+            channelCategoryOrderIds[channel] = {};
+            channelCategorySkuTrackers[channel] = {};
+          }
+
+          // Initialize family within channel
+          if (!totalsByChannelDrilldown[channel].families[family]) {
+            totalsByChannelDrilldown[channel].families[family] = { quantity: 0, revenue: 0, orders: 0, categories: {} };
+            channelFamilyOrderIds[channel][family] = new Set();
+            channelCategoryOrderIds[channel][family] = {};
+            channelCategorySkuTrackers[channel][family] = {};
+          }
+
+          // Initialize category within channel family
+          if (!totalsByChannelDrilldown[channel].families[family].categories[category]) {
+            totalsByChannelDrilldown[channel].families[family].categories[category] = { quantity: 0, revenue: 0, orders: 0 };
+            channelCategoryOrderIds[channel][family][category] = new Set();
+            channelCategorySkuTrackers[channel][family][category] = new Map();
+          }
+
+          // Aggregate at channel level
+          totalsByChannelDrilldown[channel].quantity += line.quantity || 0;
+          totalsByChannelDrilldown[channel].revenue += line.lineTotalInclVat || 0;
+          if (!channelOrderIds[channel].has(orderId)) {
+            channelOrderIds[channel].add(orderId);
+            totalsByChannelDrilldown[channel].orders++;
+          }
+
+          // Aggregate at channel->family level
+          totalsByChannelDrilldown[channel].families[family].quantity += line.quantity || 0;
+          totalsByChannelDrilldown[channel].families[family].revenue += line.lineTotalInclVat || 0;
+          const chFamilyKey = `${channel}:${family}:${orderId}`;
+          if (!channelFamilyOrderIds[channel][family].has(chFamilyKey)) {
+            channelFamilyOrderIds[channel][family].add(chFamilyKey);
+            totalsByChannelDrilldown[channel].families[family].orders++;
+          }
+
+          // Aggregate at channel->family->category level
+          totalsByChannelDrilldown[channel].families[family].categories[category].quantity += line.quantity || 0;
+          totalsByChannelDrilldown[channel].families[family].categories[category].revenue += line.lineTotalInclVat || 0;
+          const chCatKey = `${channel}:${family}:${category}:${orderId}`;
+          if (!channelCategoryOrderIds[channel][family][category].has(chCatKey)) {
+            channelCategoryOrderIds[channel][family][category].add(chCatKey);
+            totalsByChannelDrilldown[channel].families[family].categories[category].orders++;
+          }
+
+          // Track SKU within channel->family->category
+          const chSkuTracker = channelCategorySkuTrackers[channel][family][category];
+          if (!chSkuTracker.has(sku)) {
+            chSkuTracker.set(sku, { sku, title, quantity: 0, revenue: 0, orderIds: new Set() });
+          }
+          const chSkuData = chSkuTracker.get(sku)!;
+          chSkuData.quantity += line.quantity || 0;
+          chSkuData.revenue += line.lineTotalInclVat || 0;
+          chSkuData.orderIds.add(orderId);
+        }
+      }
+
+      // Convert SKU trackers to sorted arrays (limit to top 50 by revenue)
+      const MAX_SKUS_PER_CATEGORY = 50;
+
+      if (includeDrilldown) {
+        // Convert family->category SKU trackers
+        for (const family of Object.keys(totalsByFamily)) {
+          for (const category of Object.keys(totalsByFamily[family].categories)) {
+            const tracker = categorySkuTrackers[family]?.[category];
+            if (tracker && tracker.size > 0) {
+              const allSkus = Array.from(tracker.values())
+                .map(s => ({ sku: s.sku, title: s.title, quantity: s.quantity, revenue: s.revenue, orders: s.orderIds.size }))
+                .sort((a, b) => b.revenue - a.revenue);
+              totalsByFamily[family].categories[category].skus = allSkus.slice(0, MAX_SKUS_PER_CATEGORY);
+              totalsByFamily[family].categories[category].totalSkuCount = allSkus.length;
+            }
+          }
+        }
+
+        // Convert channel->family->category SKU trackers
+        if (totalsByChannelDrilldown) {
+          for (const channel of Object.keys(totalsByChannelDrilldown)) {
+            for (const family of Object.keys(totalsByChannelDrilldown[channel].families)) {
+              for (const category of Object.keys(totalsByChannelDrilldown[channel].families[family].categories)) {
+                const tracker = channelCategorySkuTrackers[channel]?.[family]?.[category];
+                if (tracker && tracker.size > 0) {
+                  const allSkus = Array.from(tracker.values())
+                    .map(s => ({ sku: s.sku, title: s.title, quantity: s.quantity, revenue: s.revenue, orders: s.orderIds.size }))
+                    .sort((a, b) => b.revenue - a.revenue);
+                  totalsByChannelDrilldown[channel].families[family].categories[category].skus = allSkus.slice(0, MAX_SKUS_PER_CATEGORY);
+                  totalsByChannelDrilldown[channel].families[family].categories[category].totalSkuCount = allSkus.length;
+                }
+              }
+            }
+          }
+        }
       }
 
       // Previous year family aggregation with nested categories
@@ -1156,7 +1554,8 @@ async function handleAnalytics(
         const pyCategoryOrderIds: Record<string, Record<string, Set<string>>> = {};
 
         for (const line of previousYearOrderLines) {
-          const { family, category } = skuToFamilyCategory[line.sku] || { family: 'Uncategorized', category: 'Other' };
+          const productInfo = skuToProduct[line.sku] || { title: line.sku, family: 'Uncategorized', category: 'Other', brand: 'Unknown' };
+          const { family, category } = productInfo;
           const orderId = line.orderId || '';
 
           if (!previousYearTotalsByFamily[family]) {
@@ -1196,7 +1595,8 @@ async function handleAnalytics(
         const pmCategoryOrderIds: Record<string, Record<string, Set<string>>> = {};
 
         for (const line of previousMonthOrderLines) {
-          const { family, category } = skuToFamilyCategory[line.sku] || { family: 'Uncategorized', category: 'Other' };
+          const productInfo = skuToProduct[line.sku] || { title: line.sku, family: 'Uncategorized', category: 'Other', brand: 'Unknown' };
+          const { family, category } = productInfo;
           const orderId = line.orderId || '';
 
           if (!previousMonthTotalsByFamily[family]) {
@@ -1249,6 +1649,14 @@ async function handleAnalytics(
       result.dailySales = dailySales;
     }
 
+    if (includeBrands) {
+      result.totalsByBrand = totalsByBrand;
+      result.brands = Object.keys(totalsByBrand).sort();
+      if (includeDaily) {
+        result.dailySalesByBrand = dailySalesByBrand;
+      }
+    }
+
     if (includePreviousYear) {
       result.previousYear = {
         fromDate: previousYearFromDateStr,
@@ -1269,7 +1677,22 @@ async function handleAnalytics(
       };
     }
 
-    if (includeCategories) {
+    if (includePreviousWeek) {
+      result.previousWeek = {
+        fromDate: previousWeekFromDateStr,
+        toDate: previousWeekToDateStr,
+        totals: previousWeekTotals || { quantity: 0, revenue: 0, orders: 0 },
+      };
+    }
+
+    if (includeAvgSameWeekday) {
+      result.avgSameWeekday = {
+        dates: avgSameWeekdayDates,
+        totals: avgSameWeekdayTotals || { quantity: 0, revenue: 0, orders: 0 },
+      };
+    }
+
+    if (includeCategories || includeDrilldown) {
       result.totalsByFamily = totalsByFamily || {};
       result.families = Object.keys(totalsByFamily || {}).sort();
       if (includeDaily) {
@@ -1283,7 +1706,481 @@ async function handleAnalytics(
       }
     }
 
+    if (includeDrilldown) {
+      result.totalsByChannelDrilldown = totalsByChannelDrilldown || {};
+    }
+
+    // Stock Code aggregation response
+    if (includeStockCodes) {
+      // Finalize SKUs array for each stockCode
+      for (const stockCode of Object.keys(totalsByStockCode)) {
+        totalsByStockCode[stockCode].skus = Array.from(stockCodeSkus[stockCode] || []);
+      }
+      result.totalsByStockCode = totalsByStockCode;
+      result.stockCodes = Object.keys(totalsByStockCode).sort();
+      if (includeDaily) {
+        result.dailySalesByStockCode = dailySalesByStockCode;
+      }
+    }
+
     return response(200, result);
+  }
+
+  // Company breakdown endpoint (for Nuie Marketplace - aggregates by buyer)
+  if (path === '/analytics/companies') {
+    const params = event.queryStringParameters || {};
+
+    // Calculate date range
+    const today = new Date();
+    let fromDateStr: string;
+    let toDateStr: string;
+    let days: number;
+
+    if (params.fromDate && params.toDate) {
+      fromDateStr = params.fromDate;
+      toDateStr = params.toDate;
+      const from = new Date(fromDateStr);
+      const to = new Date(toDateStr);
+      days = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    } else {
+      days = parseInt(params.days || '30', 10);
+      const fromDate = new Date(today);
+      fromDate.setDate(fromDate.getDate() - days);
+      fromDateStr = fromDate.toISOString().substring(0, 10);
+      toDateStr = today.toISOString().substring(0, 10);
+    }
+
+    // Pagination params
+    const page = parseInt(params.page || '1', 10);
+    const pageSize = parseInt(params.pageSize || '25', 10);
+    const search = params.search || '';
+    const includePreviousYear = params.includePreviousYear === 'true';
+    const includePreviousMonth = params.includePreviousMonth === 'true';
+
+    // Helper function to aggregate orders by company
+    const aggregateByCompany = (ordersList: Array<{ buyerCompany?: string; buyerName?: string; orderId: string; totalInclVat?: number; discount?: number; lines?: Array<{ quantity?: number }> }>) => {
+      const companyTotals: Record<string, {
+        company: string;
+        quantity: number;
+        revenue: number;
+        discount: number;
+        orders: number;
+        orderIds: Set<string>;
+      }> = {};
+
+      let totalQuantity = 0;
+      let totalRevenue = 0;
+      let totalDiscount = 0;
+
+      for (const order of ordersList) {
+        const company = order.buyerCompany || order.buyerName || 'Unknown Customer';
+
+        if (!companyTotals[company]) {
+          companyTotals[company] = {
+            company,
+            quantity: 0,
+            revenue: 0,
+            discount: 0,
+            orders: 0,
+            orderIds: new Set(),
+          };
+        }
+
+        const orderQuantity = order.lines?.reduce((sum: number, line: { quantity?: number }) => sum + (line.quantity || 0), 0) || 0;
+        companyTotals[company].quantity += orderQuantity;
+        companyTotals[company].revenue += order.totalInclVat || 0;
+        companyTotals[company].discount += order.discount || 0;
+
+        if (!companyTotals[company].orderIds.has(order.orderId)) {
+          companyTotals[company].orderIds.add(order.orderId);
+          companyTotals[company].orders++;
+        }
+
+        totalQuantity += orderQuantity;
+        totalRevenue += order.totalInclVat || 0;
+        totalDiscount += order.discount || 0;
+      }
+
+      const uniqueOrderIds = new Set(ordersList.map((o) => o.orderId));
+      return { companyTotals, totals: { quantity: totalQuantity, revenue: totalRevenue, discount: totalDiscount, orders: uniqueOrderIds.size } };
+    };
+
+    // Get orders for the date range (includes buyer info)
+    const orders = await db.getOrdersByDateRange(accountId, fromDateStr, toDateStr);
+    const { companyTotals, totals: currentTotals } = aggregateByCompany(orders);
+
+    let grandTotalQuantity = currentTotals.quantity;
+    let grandTotalRevenue = currentTotals.revenue;
+    let grandTotalDiscount = currentTotals.discount;
+    let grandTotalOrders = currentTotals.orders;
+
+    // Fetch comparison period data if requested
+    let previousYearData: { companyTotals: Record<string, { company: string; quantity: number; revenue: number; discount: number; orders: number; orderIds: Set<string> }>; totals: { quantity: number; revenue: number; discount: number; orders: number } } | undefined;
+    let previousMonthData: { companyTotals: Record<string, { company: string; quantity: number; revenue: number; discount: number; orders: number; orderIds: Set<string> }>; totals: { quantity: number; revenue: number; discount: number; orders: number } } | undefined;
+
+    if (includePreviousYear) {
+      const pyFromDate = new Date(fromDateStr);
+      const pyToDate = new Date(toDateStr);
+      pyFromDate.setFullYear(pyFromDate.getFullYear() - 1);
+      pyToDate.setFullYear(pyToDate.getFullYear() - 1);
+      const pyOrders = await db.getOrdersByDateRange(accountId, pyFromDate.toISOString().substring(0, 10), pyToDate.toISOString().substring(0, 10));
+      previousYearData = aggregateByCompany(pyOrders);
+    }
+
+    if (includePreviousMonth) {
+      const pmFromDate = new Date(fromDateStr);
+      const pmToDate = new Date(toDateStr);
+      pmFromDate.setMonth(pmFromDate.getMonth() - 1);
+      pmToDate.setMonth(pmToDate.getMonth() - 1);
+      const pmOrders = await db.getOrdersByDateRange(accountId, pmFromDate.toISOString().substring(0, 10), pmToDate.toISOString().substring(0, 10));
+      previousMonthData = aggregateByCompany(pmOrders);
+    }
+
+    // Convert to array and sort by revenue
+    let companiesArray = Object.values(companyTotals)
+      .map(({ company, quantity, revenue, discount, orders }) => {
+        const result: {
+          company: string;
+          quantity: number;
+          revenue: number;
+          discount: number;
+          orders: number;
+          avgOrderValue: number;
+          previousYear?: { quantity: number; revenue: number; discount: number; orders: number };
+          previousMonth?: { quantity: number; revenue: number; discount: number; orders: number };
+        } = {
+          company,
+          quantity,
+          revenue: Math.round(revenue * 100) / 100,
+          discount: Math.round(discount * 100) / 100,
+          orders,
+          avgOrderValue: orders > 0 ? Math.round((revenue / orders) * 100) / 100 : 0,
+        };
+
+        if (previousYearData && previousYearData.companyTotals[company]) {
+          const py = previousYearData.companyTotals[company];
+          result.previousYear = {
+            quantity: py.quantity,
+            revenue: Math.round(py.revenue * 100) / 100,
+            discount: Math.round(py.discount * 100) / 100,
+            orders: py.orders,
+          };
+        }
+
+        if (previousMonthData && previousMonthData.companyTotals[company]) {
+          const pm = previousMonthData.companyTotals[company];
+          result.previousMonth = {
+            quantity: pm.quantity,
+            revenue: Math.round(pm.revenue * 100) / 100,
+            discount: Math.round(pm.discount * 100) / 100,
+            orders: pm.orders,
+          };
+        }
+
+        return result;
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // Apply search filter if provided
+    if (search) {
+      const searchLower = search.toLowerCase();
+      companiesArray = companiesArray.filter(c =>
+        c.company.toLowerCase().includes(searchLower)
+      );
+
+      // Recalculate totals based on filtered companies
+      grandTotalQuantity = companiesArray.reduce((sum, c) => sum + c.quantity, 0);
+      grandTotalRevenue = companiesArray.reduce((sum, c) => sum + c.revenue, 0);
+      grandTotalDiscount = companiesArray.reduce((sum, c) => sum + c.discount, 0);
+      grandTotalOrders = companiesArray.reduce((sum, c) => sum + c.orders, 0);
+    }
+
+    // Paginate
+    const totalCount = companiesArray.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const pagedCompanies = companiesArray.slice(startIndex, startIndex + pageSize);
+
+    // Build response
+    const responseData: {
+      days: number;
+      fromDate: string;
+      toDate: string;
+      companies: typeof pagedCompanies;
+      totals: { quantity: number; revenue: number; discount: number; orders: number };
+      pagination: { page: number; pageSize: number; totalCount: number; totalPages: number };
+      previousYear?: { totals: { quantity: number; revenue: number; discount: number; orders: number; companyCount: number } };
+      previousMonth?: { totals: { quantity: number; revenue: number; discount: number; orders: number; companyCount: number } };
+    } = {
+      days,
+      fromDate: fromDateStr,
+      toDate: toDateStr,
+      companies: pagedCompanies,
+      totals: {
+        quantity: grandTotalQuantity,
+        revenue: Math.round(grandTotalRevenue * 100) / 100,
+        discount: Math.round(grandTotalDiscount * 100) / 100,
+        orders: grandTotalOrders,
+      },
+      pagination: {
+        page,
+        pageSize,
+        totalCount,
+        totalPages,
+      },
+    };
+
+    if (previousYearData) {
+      responseData.previousYear = {
+        totals: {
+          quantity: previousYearData.totals.quantity,
+          revenue: Math.round(previousYearData.totals.revenue * 100) / 100,
+          discount: Math.round(previousYearData.totals.discount * 100) / 100,
+          orders: previousYearData.totals.orders,
+          companyCount: Object.keys(previousYearData.companyTotals).length,
+        },
+      };
+    }
+
+    if (previousMonthData) {
+      responseData.previousMonth = {
+        totals: {
+          quantity: previousMonthData.totals.quantity,
+          revenue: Math.round(previousMonthData.totals.revenue * 100) / 100,
+          discount: Math.round(previousMonthData.totals.discount * 100) / 100,
+          orders: previousMonthData.totals.orders,
+          companyCount: Object.keys(previousMonthData.companyTotals).length,
+        },
+      };
+    }
+
+    return response(200, responseData);
+  }
+
+  // Single company detail endpoint
+  if (path.startsWith('/analytics/company/')) {
+    const companyNameEncoded = getPathParam(path, 2);
+    if (!companyNameEncoded) {
+      return response(400, { error: 'Company name required' });
+    }
+    const companyName = decodeURIComponent(companyNameEncoded);
+    const params = event.queryStringParameters || {};
+
+    // Calculate date range
+    const today = new Date();
+    let fromDateStr: string;
+    let toDateStr: string;
+    let days: number;
+
+    if (params.fromDate && params.toDate) {
+      fromDateStr = params.fromDate;
+      toDateStr = params.toDate;
+      const from = new Date(fromDateStr);
+      const to = new Date(toDateStr);
+      days = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    } else {
+      days = parseInt(params.days || '30', 10);
+      const fromDate = new Date(today);
+      fromDate.setDate(fromDate.getDate() - days);
+      fromDateStr = fromDate.toISOString().substring(0, 10);
+      toDateStr = today.toISOString().substring(0, 10);
+    }
+
+    // Fetch orders and products in parallel
+    const [orders, products] = await Promise.all([
+      db.getOrdersByDateRange(accountId, fromDateStr, toDateStr),
+      db.getAllProducts(accountId),
+    ]);
+
+    // Build SKU to product info map
+    const skuToProduct: Record<string, { title: string; brand: string; family?: string; category?: string }> = {};
+    for (const product of products) {
+      if (product.sku) {
+        skuToProduct[product.sku] = {
+          title: product.title || product.sku,
+          brand: product.brand || 'Unknown',
+          family: product.familyLabel || product.family,
+          category: product.subcategory || product.category, // subcategory is the actual field from data sync
+        };
+      }
+    }
+
+    // Filter orders for this company
+    const companyOrders = orders.filter((order: { buyerCompany?: string; buyerName?: string }) => {
+      const orderCompany = order.buyerCompany || order.buyerName || 'Unknown Customer';
+      return orderCompany === companyName;
+    });
+
+    // Aggregate totals, daily sales, and products
+    let totalRevenue = 0;
+    let totalDiscount = 0;
+    let totalQuantity = 0;
+    const uniqueOrderIds = new Set<string>();
+    const dailySales: Record<string, { revenue: number; discount: number; orders: number; quantity: number }> = {};
+    const productTotals: Record<string, { sku: string; quantity: number; revenue: number; orders: Set<string> }> = {};
+    const familyTotals: Record<string, {
+      revenue: number;
+      quantity: number;
+      orders: Set<string>;
+      categories: Record<string, {
+        revenue: number;
+        quantity: number;
+        orders: Set<string>;
+        products: Record<string, { sku: string; quantity: number; revenue: number; orders: Set<string> }>;
+      }>;
+    }> = {};
+
+    for (const order of companyOrders) {
+      const orderId = order.orderId;
+      const orderDate = order.orderDate?.substring(0, 10) || '';
+      const orderDiscount = order.discount || 0;
+
+      uniqueOrderIds.add(orderId);
+      totalRevenue += order.totalInclVat || 0;
+      totalDiscount += orderDiscount;
+
+      // Daily aggregation
+      if (orderDate) {
+        if (!dailySales[orderDate]) {
+          dailySales[orderDate] = { revenue: 0, discount: 0, orders: 0, quantity: 0 };
+        }
+        dailySales[orderDate].revenue += order.totalInclVat || 0;
+        dailySales[orderDate].discount += orderDiscount;
+        dailySales[orderDate].orders++;
+      }
+
+      // Product and family aggregation from order lines
+      const lines = order.lines || [];
+      for (const line of lines) {
+        const sku = line.sku || 'Unknown';
+        const lineQuantity = line.quantity || 0;
+        const lineRevenue = line.lineTotalInclVat || 0;
+
+        totalQuantity += lineQuantity;
+        if (orderDate) {
+          dailySales[orderDate].quantity += lineQuantity;
+        }
+
+        // Product aggregation
+        if (!productTotals[sku]) {
+          productTotals[sku] = { sku, quantity: 0, revenue: 0, orders: new Set() };
+        }
+        productTotals[sku].quantity += lineQuantity;
+        productTotals[sku].revenue += lineRevenue;
+        productTotals[sku].orders.add(orderId);
+
+        // Family/category aggregation
+        const productInfo = skuToProduct[sku];
+        const family = productInfo?.family || 'Unknown Family';
+        const category = productInfo?.category || 'Unknown Category';
+
+        if (!familyTotals[family]) {
+          familyTotals[family] = { revenue: 0, quantity: 0, orders: new Set(), categories: {} };
+        }
+        familyTotals[family].revenue += lineRevenue;
+        familyTotals[family].quantity += lineQuantity;
+        familyTotals[family].orders.add(orderId);
+
+        if (!familyTotals[family].categories[category]) {
+          familyTotals[family].categories[category] = { revenue: 0, quantity: 0, orders: new Set(), products: {} };
+        }
+        familyTotals[family].categories[category].revenue += lineRevenue;
+        familyTotals[family].categories[category].quantity += lineQuantity;
+        familyTotals[family].categories[category].orders.add(orderId);
+
+        // Product within category
+        if (!familyTotals[family].categories[category].products[sku]) {
+          familyTotals[family].categories[category].products[sku] = { sku, quantity: 0, revenue: 0, orders: new Set() };
+        }
+        familyTotals[family].categories[category].products[sku].quantity += lineQuantity;
+        familyTotals[family].categories[category].products[sku].revenue += lineRevenue;
+        familyTotals[family].categories[category].products[sku].orders.add(orderId);
+      }
+    }
+
+    // Build top products list (sorted by revenue)
+    const topProducts = Object.values(productTotals)
+      .map(({ sku, quantity, revenue, orders }) => {
+        const productInfo = skuToProduct[sku];
+        return {
+          sku,
+          title: productInfo?.title || sku,
+          brand: productInfo?.brand || 'Unknown',
+          family: productInfo?.family,
+          quantity,
+          revenue: Math.round(revenue * 100) / 100,
+          orders: orders.size,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 50); // Top 50 products
+
+    // Build family breakdown (convert Sets to counts)
+    const familyBreakdown: Record<string, {
+      revenue: number;
+      quantity: number;
+      orders: number;
+      categories: Record<string, {
+        revenue: number;
+        quantity: number;
+        orders: number;
+        products: Array<{ sku: string; title: string; quantity: number; revenue: number; orders: number }>;
+      }>;
+    }> = {};
+    for (const [family, data] of Object.entries(familyTotals)) {
+      const categories: Record<string, {
+        revenue: number;
+        quantity: number;
+        orders: number;
+        products: Array<{ sku: string; title: string; quantity: number; revenue: number; orders: number }>;
+      }> = {};
+      for (const [cat, catData] of Object.entries(data.categories)) {
+        // Convert products to sorted array
+        const products = Object.values(catData.products)
+          .map(p => ({
+            sku: p.sku,
+            title: skuToProduct[p.sku]?.title || p.sku,
+            quantity: p.quantity,
+            revenue: Math.round(p.revenue * 100) / 100,
+            orders: p.orders.size,
+          }))
+          .sort((a, b) => b.revenue - a.revenue);
+
+        categories[cat] = {
+          revenue: Math.round(catData.revenue * 100) / 100,
+          quantity: catData.quantity,
+          orders: catData.orders.size,
+          products,
+        };
+      }
+      familyBreakdown[family] = {
+        revenue: Math.round(data.revenue * 100) / 100,
+        quantity: data.quantity,
+        orders: data.orders.size,
+        categories,
+      };
+    }
+
+    // Calculate totals
+    const totalOrders = uniqueOrderIds.size;
+    const discountPercent = totalRevenue > 0 ? (totalDiscount / totalRevenue) * 100 : 0;
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    return response(200, {
+      company: companyName,
+      dateRange: { fromDate: fromDateStr, toDate: toDateStr, days },
+      totals: {
+        revenue: Math.round(totalRevenue * 100) / 100,
+        discount: Math.round(totalDiscount * 100) / 100,
+        discountPercent: Math.round(discountPercent * 100) / 100,
+        orders: totalOrders,
+        quantity: totalQuantity,
+        avgOrderValue: Math.round(avgOrderValue * 100) / 100,
+      },
+      dailySales,
+      familyBreakdown,
+      topProducts,
+    });
   }
 
   if (path === '/analytics/insights') {
@@ -1323,16 +2220,20 @@ interface InsightCategory {
 // ============ Insights Handler ============
 
 async function handleInsights(accountId: string): Promise<APIGatewayProxyResult> {
-  const products = await db.getAllProducts(accountId);
+  const [products, salesMap, account] = await Promise.all([
+    db.getAllProducts(accountId),
+    db.getSalesBySku(accountId, 180),
+    db.getAccount(accountId),
+  ]);
 
-  // Get 180-day sales data for calculating avg daily sales
-  const salesMap = await db.getSalesBySku(accountId, 180);
+  // Get channel fee percentage from account settings (default: 15%)
+  const channelFeePercent = account?.settings?.defaultChannelFeePercent ?? 15;
 
   // Helper to calculate margin
   const calculateMargin = (p: { currentPrice?: number; costPrice?: number; deliveryCost?: number }): number => {
     if (!p.currentPrice || p.currentPrice <= 0) return 0;
     const priceExVat = p.currentPrice / 1.2; // Remove 20% VAT
-    const channelFee = priceExVat * 0.15; // ~15% average channel fee
+    const channelFee = priceExVat * (channelFeePercent / 100); // Use account-specific channel fee
     const totalCost = (p.costPrice || 0) + (p.deliveryCost || 0) + channelFee;
     const profit = priceExVat - totalCost;
     return (profit / priceExVat) * 100;
@@ -1486,10 +2387,10 @@ async function handleCarriers(
   // Parse carrierId from path: /carriers/{carrierId}
   const carrierId = getPathParam(event.path, 1);
 
-  // POST /carriers/recalculate - Recalculate delivery costs for all products
+  // POST /carriers/recalculate - Recalculate delivery costs for all products across all accounts
   if (method === 'POST' && carrierId === 'recalculate') {
     requireAdmin(ctx);
-    const result = await recalculateDeliveryCosts(accountId);
+    const result = await recalculateDeliveryCostsAllAccounts();
     return response(200, result);
   }
 
@@ -1553,98 +2454,138 @@ async function handleCarriers(
 }
 
 /**
- * Recalculate delivery costs for all products based on order delivery data
+ * Recalculate delivery costs for all products across ALL accounts
+ * Uses ku-bathrooms as the master source for carrier costs
  */
-async function recalculateDeliveryCosts(accountId: string): Promise<{
-  ordersWithDeliveryData: number;
+async function recalculateDeliveryCostsAllAccounts(): Promise<{
   ordersProcessed: number;
   ordersSkipped: number;
   skusAnalyzed: number;
   productsUpdated: number;
   productsUnchanged: number;
-  updatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string }>;
+  accountsProcessed: number;
+  updatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string; account: string }>;
 }> {
-  // Get all orders with delivery data
-  const orders = await db.getOrdersWithDeliveryData(accountId);
-  const ordersWithDeliveryData = orders.length;
+  const MASTER_CARRIER_ACCOUNT = 'ku-bathrooms';
 
-  // Get all carrier costs
-  const carriers = await db.getAllCarrierCosts(accountId);
+  // Load carrier costs from master account only
+  const carriers = await db.getAllCarrierCosts(MASTER_CARRIER_ACCOUNT);
   const carrierCostMap = new Map<string, number>();
   for (const carrier of carriers) {
     if (carrier.isActive) {
+      // Map by both carrierId and carrierName (lowercase)
+      carrierCostMap.set(carrier.carrierId.toLowerCase(), carrier.costPerParcel);
       carrierCostMap.set(carrier.carrierName.toLowerCase(), carrier.costPerParcel);
     }
   }
+  console.log(`[Recalculate] Loaded ${carriers.length} carriers from ${MASTER_CARRIER_ACCOUNT}`);
 
-  // Aggregate delivery costs by SKU
-  const skuDeliveryCosts: Record<string, { totalCost: number; orderCount: number; carrier: string }> = {};
+  // Get all active accounts
+  const accounts = await db.getActiveAccounts();
+  console.log(`[Recalculate] Processing ${accounts.length} accounts`);
 
-  let ordersProcessed = 0;
-  let ordersSkipped = 0;
+  let totalOrdersProcessed = 0;
+  let totalOrdersSkipped = 0;
+  let totalSkusAnalyzed = 0;
+  let totalProductsUpdated = 0;
+  let totalProductsUnchanged = 0;
+  const allUpdatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string; account: string }> = [];
 
-  for (const order of orders) {
-    const carrierName = order.deliveryCarrier?.toLowerCase();
-    const carrierCost = carrierName ? carrierCostMap.get(carrierName) : undefined;
+  // Process each account
+  for (const account of accounts) {
+    const accountId = account.accountId;
 
-    if (!carrierCost || !order.deliveryParcels) {
-      ordersSkipped++;
-      continue;
-    }
+    // Get orders with delivery data for this account
+    const orders = await db.getOrdersWithDeliveryData(accountId);
+    console.log(`[Recalculate:${accountId}] Found ${orders.length} orders with delivery data`);
 
-    ordersProcessed++;
-    const deliveryCost = carrierCost * order.deliveryParcels;
+    // Aggregate delivery costs by SKU for this account
+    const skuDeliveryCosts: Record<string, { totalCost: number; totalQuantity: number; carrier: string }> = {};
 
-    // Get order lines to attribute cost to SKUs
-    const orderLines = await db.getOrderLinesByOrderId(accountId, order.orderId);
-    if (orderLines.length === 0) continue;
+    for (const order of orders) {
+      const carrierName = (order.deliveryCarrier || '').toLowerCase();
+      const carrierCost = carrierCostMap.get(carrierName);
 
-    // Distribute delivery cost across SKUs in the order
-    const costPerLine = deliveryCost / orderLines.length;
-
-    for (const line of orderLines) {
-      if (!skuDeliveryCosts[line.sku]) {
-        skuDeliveryCosts[line.sku] = { totalCost: 0, orderCount: 0, carrier: order.deliveryCarrier || '' };
+      if (!carrierCost || !order.deliveryParcels) {
+        totalOrdersSkipped++;
+        continue;
       }
-      skuDeliveryCosts[line.sku].totalCost += costPerLine;
-      skuDeliveryCosts[line.sku].orderCount++;
+
+      totalOrdersProcessed++;
+      const deliveryCost = carrierCost * order.deliveryParcels;
+
+      // Use order.lines if available (embedded), otherwise get from order lines table
+      const lines = order.lines || [];
+      if (lines.length === 0) continue;
+
+      // Calculate total order value for proportional cost distribution
+      const totalOrderValue = lines.reduce((sum: number, line: any) => {
+        const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
+        return sum + lineValue;
+      }, 0);
+
+      for (const line of lines) {
+        const sku = line.sku;
+        if (!sku) continue;
+
+        const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
+        const valueShare = totalOrderValue > 0 ? lineValue / totalOrderValue : 1 / lines.length;
+        const lineDeliveryCost = deliveryCost * valueShare;
+        const lineQuantity = line.quantity || 1;
+
+        if (!skuDeliveryCosts[sku]) {
+          skuDeliveryCosts[sku] = { totalCost: 0, totalQuantity: 0, carrier: order.deliveryCarrier || '' };
+        }
+        skuDeliveryCosts[sku].totalCost += lineDeliveryCost;
+        skuDeliveryCosts[sku].totalQuantity += lineQuantity;
+      }
     }
-  }
 
-  // Update products with new average delivery costs
-  const skusAnalyzed = Object.keys(skuDeliveryCosts).length;
-  let productsUpdated = 0;
-  let productsUnchanged = 0;
-  const updatedSkus: Array<{ sku: string; oldCost: number; newCost: number; carrier: string }> = [];
+    // Update products with new average delivery costs
+    const skusInAccount = Object.keys(skuDeliveryCosts).length;
+    totalSkusAnalyzed += skusInAccount;
 
-  for (const [sku, data] of Object.entries(skuDeliveryCosts)) {
-    const avgDeliveryCost = data.orderCount > 0 ? data.totalCost / data.orderCount : 0;
-    const roundedCost = Math.round(avgDeliveryCost * 100) / 100;
+    // Batch get all products for this account
+    const products = await db.getAllProducts(accountId);
+    const productMap = new Map(products.map(p => [p.sku, p]));
 
-    // Get current product
-    const product = await db.getProduct(accountId, sku);
-    if (!product) continue;
+    const productsToUpdate: Array<{ sku: string; deliveryCost: number }> = [];
 
-    const oldCost = product.deliveryCost || 0;
+    for (const [sku, data] of Object.entries(skuDeliveryCosts)) {
+      const avgDeliveryCost = data.totalQuantity > 0 ? data.totalCost / data.totalQuantity : 0;
+      const roundedCost = Math.round(avgDeliveryCost * 100) / 100;
 
-    // Only update if cost changed significantly (> 0.01)
-    if (Math.abs(roundedCost - oldCost) > 0.01) {
-      await db.updateProduct(accountId, sku, { deliveryCost: roundedCost });
-      productsUpdated++;
-      updatedSkus.push({ sku, oldCost, newCost: roundedCost, carrier: data.carrier });
-    } else {
-      productsUnchanged++;
+      const product = productMap.get(sku);
+      if (!product) continue;
+
+      const oldCost = product.deliveryCost || 0;
+
+      // Only update if cost changed significantly (> 0.01)
+      if (Math.abs(roundedCost - oldCost) > 0.01) {
+        productsToUpdate.push({ sku, deliveryCost: roundedCost });
+        allUpdatedSkus.push({ sku, oldCost, newCost: roundedCost, carrier: data.carrier, account: accountId });
+        totalProductsUpdated++;
+      } else {
+        totalProductsUnchanged++;
+      }
     }
+
+    // Batch update products
+    for (const { sku, deliveryCost } of productsToUpdate) {
+      await db.updateProduct(accountId, sku, { deliveryCost });
+    }
+
+    console.log(`[Recalculate:${accountId}] Updated ${productsToUpdate.length} products`);
   }
 
   return {
-    ordersWithDeliveryData,
-    ordersProcessed,
-    ordersSkipped,
-    skusAnalyzed,
-    productsUpdated,
-    productsUnchanged,
-    updatedSkus: updatedSkus.slice(0, 50), // Limit to first 50 for response size
+    ordersProcessed: totalOrdersProcessed,
+    ordersSkipped: totalOrdersSkipped,
+    skusAnalyzed: totalSkusAnalyzed,
+    productsUpdated: totalProductsUpdated,
+    productsUnchanged: totalProductsUnchanged,
+    accountsProcessed: accounts.length,
+    updatedSkus: allUpdatedSkus.slice(0, 50), // Limit to first 50 for response size
   };
 }
 
@@ -1777,6 +2718,7 @@ async function handleHistory(
     const fromDate = params.fromDate;
     const toDate = params.toDate;
     const includeChannelSales = params.includeChannelSales === 'true';
+    const includeCompanySales = params.includeCompanySales === 'true';
 
     // Default to last 180 days if no dates specified
     const defaultFrom = new Date();
@@ -1795,11 +2737,18 @@ async function handleHistory(
       channelSales = await getChannelSalesByDay(accountId, decodedSku, from, to);
     }
 
+    // Optionally fetch company-level sales data (for B2B accounts)
+    let companySales: Record<string, Record<string, { quantity: number; revenue: number }>> | undefined;
+    if (includeCompanySales) {
+      companySales = await getCompanySalesByDay(accountId, decodedSku, from, to);
+    }
+
     return response(200, {
       sku: decodedSku,
       product,
       history,
       channelSales,
+      companySales,
       fromDate: from,
       toDate: to,
       recordCount: history.length,
@@ -1821,7 +2770,7 @@ async function getChannelSalesByDay(
 ): Promise<Record<string, Record<string, { quantity: number; revenue: number }>>> {
   // Use the efficient date-range query (uses by-account-date GSI)
   // then filter by SKU in memory - much faster than FilterExpression
-  const allOrderLines = await db.getOrderLinesByDateRange(accountId, fromDate, toDate);
+  const allOrderLines = await db.getOrderLinesForAggregation(accountId, fromDate, toDate);
 
   // Filter to just this SKU (case-insensitive match)
   const skuUpper = sku.toUpperCase();
@@ -1844,6 +2793,49 @@ async function getChannelSalesByDay(
 
     result[orderDate][channelName].quantity += line.quantity || 0;
     result[orderDate][channelName].revenue += line.lineTotalInclVat || 0;
+  }
+
+  return result;
+}
+
+/**
+ * Get sales by company for each day for a specific SKU (for B2B accounts)
+ * Uses the orders table which has buyerCompany info
+ */
+async function getCompanySalesByDay(
+  accountId: string,
+  sku: string,
+  fromDate: string,
+  toDate: string
+): Promise<Record<string, Record<string, { quantity: number; revenue: number }>>> {
+  // Get full orders (which have buyerCompany info and nested lines)
+  const orders = await db.getOrdersByDateRange(accountId, fromDate, toDate);
+
+  const result: Record<string, Record<string, { quantity: number; revenue: number }>> = {};
+  const skuUpper = sku.toUpperCase();
+
+  for (const order of orders) {
+    const orderDate = order.orderDateDay;
+    if (!orderDate) continue;
+
+    // Filter lines for this SKU
+    const matchingLines = order.lines?.filter(line => line.sku.toUpperCase() === skuUpper) || [];
+    if (matchingLines.length === 0) continue;
+
+    // Use buyerCompany, fall back to buyerName, then 'Unknown'
+    const companyName = order.buyerCompany || order.buyerName || 'Unknown Customer';
+
+    if (!result[orderDate]) {
+      result[orderDate] = {};
+    }
+    if (!result[orderDate][companyName]) {
+      result[orderDate][companyName] = { quantity: 0, revenue: 0 };
+    }
+
+    for (const line of matchingLines) {
+      result[orderDate][companyName].quantity += line.quantity || 0;
+      result[orderDate][companyName].revenue += line.lineTotalInclVat || 0;
+    }
   }
 
   return result;
@@ -1874,6 +2866,17 @@ async function handleImport(
   const ctxWithAccount = requireAccountContext(ctx);
   const accountId = ctxWithAccount.accountId;
 
+  // Job status check - GET /import/jobs/{jobId}
+  const jobMatch = path.match(/\/import\/jobs\/([^/]+)$/);
+  if (jobMatch && event.httpMethod === 'GET') {
+    const jobId = jobMatch[1];
+    const job = await db.getImportJob(jobId);
+    if (!job) {
+      return response(404, { error: 'Job not found' });
+    }
+    return response(200, job);
+  }
+
   // Cost import - requires at least editor role
   if (path.endsWith('/costs') && event.httpMethod === 'POST') {
     requireEditor(ctx);
@@ -1891,7 +2894,7 @@ async function handleImport(
 
 async function handleCostImport(
   event: APIGatewayProxyEvent,
-  accountId: string
+  _accountId: string // Unused - imports apply to all accounts
 ): Promise<APIGatewayProxyResult> {
   const body = JSON.parse(event.body || '{}');
   // Validate and sanitize input data
@@ -1959,94 +2962,227 @@ async function handleCostImport(
     });
   }
 
-  console.log(`[Import:${accountId}] Processing ${csvData.length} cost records`);
+  // Generate job ID and create job record
+  const jobId = uuid();
+  await db.createImportJob(jobId, 'costs');
 
-  // Get all products for this account
-  const existingProducts = await db.getAllProducts(accountId);
-  const productsBySku = new Map<string, Product>();
-  const productsByBalterleySku = new Map<string, Product>();
+  console.log(`[Import:Async] Created job ${jobId} for ${csvData.length} cost records`);
 
-  for (const product of existingProducts) {
-    productsBySku.set(product.sku.toUpperCase(), product);
-    if (product.balterleySku) {
-      productsByBalterleySku.set(product.balterleySku.toUpperCase(), product);
-    }
-  }
+  // Store import data in S3 (too large for Lambda payload)
+  const s3Key = `import-jobs/${jobId}.json`;
+  await s3Client.send(new PutObjectCommand({
+    Bucket: IMPORT_DATA_BUCKET,
+    Key: s3Key,
+    Body: JSON.stringify(csvData),
+    ContentType: 'application/json',
+  }));
+  console.log(`[Import:Async] Stored ${csvData.length} records in S3`);
 
-  console.log(`[Import:${accountId}] Loaded ${existingProducts.length} products`);
+  // Invoke self asynchronously to process the import (only pass job ID)
+  const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME || 'repricing-v2-api';
+  await lambdaClient.send(
+    new InvokeCommand({
+      FunctionName: functionName,
+      InvocationType: 'Event', // Async invocation
+      Payload: JSON.stringify({
+        asyncImport: {
+          jobId,
+          type: 'costs',
+        },
+      }),
+    })
+  );
 
-  let updated = 0;
-  let notFound = 0;
-  let matchedByBalterley = 0;
-  const notFoundSkus: string[] = [];
-  const productsToUpdate: Product[] = [];
+  console.log(`[Import:Async] Triggered async processing for job ${jobId}`);
 
-  for (const row of csvData) {
-    const skuUpper = row.sku.toUpperCase().trim();
-
-    // Try matching by primary SKU first (case-insensitive)
-    let product = productsBySku.get(skuUpper);
-
-    // If not found, try matching by Balterley SKU
-    if (!product) {
-      product = productsByBalterleySku.get(skuUpper);
-      if (product) {
-        matchedByBalterley++;
-      }
-    }
-
-    if (product) {
-      product.costPrice = row.costPrice;
-      if (row.deliveryCost !== undefined) {
-        product.deliveryCost = row.deliveryCost;
-      }
-      productsToUpdate.push(product);
-      updated++;
-    } else {
-      notFound++;
-      if (notFoundSkus.length < 20) {
-        notFoundSkus.push(row.sku);
-      }
-    }
-  }
-
-  // Batch write all updates
-  if (productsToUpdate.length > 0) {
-    console.log(`[Import:${accountId}] Batch writing ${productsToUpdate.length} products...`);
-    await db.batchPutProducts(accountId, productsToUpdate);
-  }
-
-  // Find database SKUs that weren't in the import file
-  const importedSkuSet = new Set(csvData.map(row => row.sku.toUpperCase().trim()));
-  const dbSkusMissingFromFile: string[] = [];
-  let missingCount = 0;
-
-  for (const [skuUpper, product] of productsBySku) {
-    if (!importedSkuSet.has(skuUpper)) {
-      missingCount++;
-      if (dbSkusMissingFromFile.length < 50) {
-        dbSkusMissingFromFile.push(product.sku);
-      }
-    }
-  }
-
-  console.log(`[Import:${accountId}] Complete: ${updated} updated, ${notFound} not found in DB, ${missingCount} DB SKUs missing from file, ${matchedByBalterley} matched by Balterley SKU`);
-
-  return response(200, {
-    message: 'Cost import complete',
-    updated,
-    notFoundInDb: notFound,
-    matchedByBalterleySku: matchedByBalterley,
-    total: csvData.length,
-    sampleNotFoundInDb: notFoundSkus.length > 0 ? notFoundSkus : undefined,
-    dbProductsMissingFromFile: missingCount,
-    sampleDbSkusMissingFromFile: dbSkusMissingFromFile.length > 0 ? dbSkusMissingFromFile : undefined,
+  // Return immediately with job ID
+  return response(202, {
+    status: 'processing',
+    jobId,
+    message: 'Import started. Poll /import/jobs/{jobId} for status.',
+    totalRecords: csvData.length,
   });
+}
+
+/**
+ * Process cost import asynchronously (called by self-invoke)
+ */
+async function processAsyncCostImport(
+  csvData: Array<{ sku: string; costPrice: number; deliveryCost?: number }>,
+  jobId: string
+): Promise<Record<string, unknown>> {
+  console.log(`[Import:${jobId}] Processing ${csvData.length} cost records across all accounts`);
+
+  // Log first 5 records for debugging
+  console.log(`[Import:${jobId}] First 5 records:`, JSON.stringify(csvData.slice(0, 5)));
+
+  // Get all active accounts
+  const accounts = await db.getActiveAccounts();
+  console.log(`[Import:${jobId}] Found ${accounts.length} active accounts`);
+
+  // Create SKU lookup map for fast matching
+  // Also create a map without leading zeros for fuzzy matching
+  const csvDataBySku = new Map<string, { costPrice: number; deliveryCost?: number; originalSku: string }>();
+  const csvDataBySkuNoLeadingZeros = new Map<string, { costPrice: number; deliveryCost?: number; originalSku: string }>();
+  for (const row of csvData) {
+    const normalizedSku = row.sku.toUpperCase().trim();
+    const data = {
+      costPrice: row.costPrice,
+      deliveryCost: row.deliveryCost,
+      originalSku: row.sku,
+    };
+    csvDataBySku.set(normalizedSku, data);
+    // Also index by SKU with leading zeros stripped
+    const skuNoLeadingZeros = normalizedSku.replace(/^0+/, '');
+    if (skuNoLeadingZeros !== normalizedSku) {
+      csvDataBySkuNoLeadingZeros.set(skuNoLeadingZeros, data);
+    }
+  }
+
+  // Debug: Check for CAR870 and any similar SKUs
+  const debugSkus = ['CAR870', 'CAR 870', ' CAR870', 'CAR870 '];
+  for (const testSku of debugSkus) {
+    const data = csvDataBySku.get(testSku.toUpperCase().trim());
+    if (data) {
+      console.log(`[Import:${jobId}] FOUND "${testSku}": ${JSON.stringify(data)}`);
+    }
+  }
+
+  // Find any SKUs containing "CAR870"
+  const car870Matches: string[] = [];
+  for (const [key, value] of csvDataBySku.entries()) {
+    if (key.includes('CAR870') || value.originalSku.includes('CAR870')) {
+      car870Matches.push(`${key} => ${JSON.stringify(value)}`);
+    }
+  }
+  console.log(`[Import:${jobId}] SKUs containing CAR870:`, car870Matches.length > 0 ? car870Matches : 'NONE FOUND');
+
+  // Process each account
+  const accountResults: { accountId: string; updated: number; matchedByBalterley: number; skipped: number }[] = [];
+  let totalUpdated = 0;
+  let totalMatchedByBalterley = 0;
+  const allNotFoundSkus = new Set<string>();
+  const skippedProducts: Array<{ accountId: string; sku: string; reason: string }> = [];
+
+  for (const account of accounts) {
+    const existingProducts = await db.getAllProducts(account.accountId);
+    const productsToUpdate: Product[] = [];
+    let accountUpdated = 0;
+    let accountMatchedByBalterley = 0;
+    let accountSkipped = 0;
+
+    // Check if CAR870 exists in this account's products
+    const car870Product = existingProducts.find(p => p.sku.toUpperCase() === 'CAR870');
+    if (car870Product) {
+      console.log(`[Import:${jobId}] CAR870 exists in ${account.accountId}: currentCostPrice=${car870Product.costPrice}`);
+    }
+
+    for (const product of existingProducts) {
+      const skuUpper = product.sku.toUpperCase().trim();
+      const skuNoLeadingZeros = skuUpper.replace(/^0+/, '');
+
+      // Try matching by primary SKU first
+      let costData = csvDataBySku.get(skuUpper);
+
+      // If not found, try matching with leading zeros stripped from product SKU
+      if (!costData && skuNoLeadingZeros !== skuUpper) {
+        costData = csvDataBySku.get(skuNoLeadingZeros);
+      }
+
+      // If not found, try matching CSV SKU (with leading zeros stripped) to product SKU
+      if (!costData) {
+        costData = csvDataBySkuNoLeadingZeros.get(skuNoLeadingZeros);
+      }
+
+      // If not found, try matching by Balterley SKU
+      if (!costData && product.balterleySku) {
+        costData = csvDataBySku.get(product.balterleySku.toUpperCase().trim());
+        if (costData) {
+          accountMatchedByBalterley++;
+        }
+      }
+
+      if (costData) {
+        // Debug CAR870 specifically
+        if (skuUpper === 'CAR870') {
+          console.log(`[Import:${jobId}] MATCHED CAR870 in ${account.accountId}: newCostPrice=${costData.costPrice}, newDeliveryCost=${costData.deliveryCost}`);
+        }
+
+        product.costPrice = costData.costPrice;
+        if (costData.deliveryCost !== undefined) {
+          product.deliveryCost = costData.deliveryCost;
+        }
+        productsToUpdate.push(product);
+        accountUpdated++;
+      } else {
+        // Track first 10 unmatched products per account for debugging
+        if (accountSkipped < 10) {
+          skippedProducts.push({
+            accountId: account.accountId,
+            sku: product.sku,
+            reason: 'Not found in CSV',
+          });
+        }
+        accountSkipped++;
+      }
+    }
+
+    // Batch write updates for this account
+    if (productsToUpdate.length > 0) {
+      console.log(`[Import:${jobId}:${account.accountId}] Writing ${productsToUpdate.length} products to DB...`);
+      await db.batchPutProducts(account.accountId, productsToUpdate);
+      console.log(`[Import:${jobId}:${account.accountId}] Write complete`);
+    }
+
+    accountResults.push({
+      accountId: account.accountId,
+      updated: accountUpdated,
+      matchedByBalterley: accountMatchedByBalterley,
+      skipped: accountSkipped,
+    });
+    totalUpdated += accountUpdated;
+    totalMatchedByBalterley += accountMatchedByBalterley;
+
+    console.log(`[Import:${jobId}:${account.accountId}] Complete: ${accountUpdated} updated, ${accountMatchedByBalterley} by Balterley, ${accountSkipped} skipped`);
+  }
+
+  // Track SKUs not found in any account (for reporting)
+  const allProductSkus = new Set<string>();
+  for (const account of accounts) {
+    const products = await db.getAllProducts(account.accountId);
+    for (const product of products) {
+      allProductSkus.add(product.sku.toUpperCase().trim());
+      if (product.balterleySku) {
+        allProductSkus.add(product.balterleySku.toUpperCase().trim());
+      }
+    }
+  }
+  for (const row of csvData) {
+    const normalizedSku = row.sku.toUpperCase().trim();
+    if (!allProductSkus.has(normalizedSku)) {
+      allNotFoundSkus.add(row.sku);
+    }
+  }
+
+  console.log(`[Import:${jobId}] Complete: ${totalUpdated} total updated across ${accounts.length} accounts`);
+  console.log(`[Import:${jobId}] Sample skipped products:`, JSON.stringify(skippedProducts.slice(0, 20)));
+
+  return {
+    message: 'Cost import complete (applied to all accounts)',
+    jobId,
+    totalUpdated,
+    matchedByBalterleySku: totalMatchedByBalterley,
+    totalRecords: csvData.length,
+    accountsProcessed: accounts.length,
+    accountResults,
+    notFoundInAnyAccount: allNotFoundSkus.size,
+    sampleNotFound: allNotFoundSkus.size > 0 ? Array.from(allNotFoundSkus).slice(0, 20) : undefined,
+  };
 }
 
 async function handleDeliveryImport(
   event: APIGatewayProxyEvent,
-  accountId: string
+  _accountId: string // Unused - imports apply to all accounts
 ): Promise<APIGatewayProxyResult> {
   const body = JSON.parse(event.body || '{}');
   const deliveryData: Array<{
@@ -2059,32 +3195,80 @@ async function handleDeliveryImport(
     return response(400, { error: 'Invalid data format. Expected { data: [...] }' });
   }
 
-  console.log(`[DeliveryImport:${accountId}] Processing ${deliveryData.length} delivery records`);
+  console.log(`[DeliveryImport:CrossAccount] Processing ${deliveryData.length} delivery records across all accounts`);
 
-  // Get carrier costs for lookup
-  const carrierCosts = await db.getAllCarrierCosts(accountId);
-  const carrierCostMap = new Map(carrierCosts.map(c => [c.carrierId, c.costPerParcel]));
-  console.log(`[DeliveryImport:${accountId}] Loaded ${carrierCosts.length} carrier cost configurations`);
+  // Get all active accounts
+  const accounts = await db.getActiveAccounts();
+  console.log(`[DeliveryImport:CrossAccount] Found ${accounts.length} active accounts`);
 
-  // Get all orders for matching
-  const allOrders = await db.getAllOrders(accountId);
-  console.log(`[DeliveryImport:${accountId}] Loaded ${allOrders.length} orders for matching`);
+  // Only load orders from last 90 days to speed up import (delivery data is typically recent)
+  const toDate = new Date();
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() - 90);
+  const fromDateStr = fromDate.toISOString().substring(0, 10);
+  const toDateStr = toDate.toISOString().substring(0, 10);
+  console.log(`[DeliveryImport:CrossAccount] Loading orders from ${fromDateStr} to ${toDateStr}`);
 
-  // Get all products for SKU delivery cost updates
-  const allProducts = await db.getAllProducts(accountId);
-  const productsBySku = new Map(allProducts.map(p => [p.sku, p]));
-  console.log(`[DeliveryImport:${accountId}] Loaded ${allProducts.length} products for delivery cost calculation`);
+  // Load orders from all accounts into a unified lookup
+  // Map: orderNumber -> { accountId, order }
+  const orderByChannelOrderNo = new Map<string, { accountId: string; order: any }>();
+  const orderByBasePoNumber = new Map<string, { accountId: string; order: any }>();
 
-  // Create lookup map for orders by channelOrderNo
-  const orderByChannelOrderNo = new Map(allOrders.map(o => [o.channelOrderNo, o]));
-  const orderByBasePoNumber = new Map<string, typeof allOrders[0]>();
-  for (const order of allOrders) {
-    if (order.channelOrderNo && order.channelOrderNo.includes('-')) {
-      const basePo = order.channelOrderNo.split('-')[0];
-      if (!orderByBasePoNumber.has(basePo)) {
-        orderByBasePoNumber.set(basePo, order);
+  // Load carrier costs from ku-bathrooms only (single source of truth for all accounts)
+  const MASTER_CARRIER_ACCOUNT = 'ku-bathrooms';
+  const masterCarrierCosts = await db.getAllCarrierCosts(MASTER_CARRIER_ACCOUNT);
+  const carrierCostMap = new Map<string, number>();
+  for (const cc of masterCarrierCosts) {
+    carrierCostMap.set(cc.carrierId, cc.costPerParcel);
+  }
+  console.log(`[DeliveryImport:CrossAccount] Loaded ${masterCarrierCosts.length} carrier costs from ${MASTER_CARRIER_ACCOUNT}`);
+
+  // Load products by SKU per account
+  const productsBySkuPerAccount = new Map<string, Map<string, Product>>();
+
+  // Track SKU delivery stats per account
+  const skuDeliveryStatsPerAccount = new Map<string, Map<string, {
+    carrierCounts: Record<string, number>;
+    totalDeliveryCost: number;
+    totalQuantity: number;
+    orderCount: number;
+  }>>();
+
+  // Load data from all accounts in parallel for speed
+  const accountDataPromises = accounts.map(async (account) => {
+    const [orders, products] = await Promise.all([
+      db.getOrdersByDateRange(account.accountId, fromDateStr, toDateStr),
+      db.getAllProducts(account.accountId),
+    ]);
+    return { account, orders, products };
+  });
+
+  const accountsData = await Promise.all(accountDataPromises);
+
+  for (const { account, orders, products } of accountsData) {
+
+    console.log(`[DeliveryImport:${account.accountId}] Loaded ${orders.length} orders, ${products.length} products`);
+
+    // Add orders to global lookup
+    for (const order of orders) {
+      if (order.channelOrderNo) {
+        orderByChannelOrderNo.set(order.channelOrderNo, { accountId: account.accountId, order });
+
+        // Also add base PO number for fallback matching (other accounts may use different formats)
+        if (order.channelOrderNo.includes('-')) {
+          const basePo = order.channelOrderNo.split('-')[0];
+          if (!orderByBasePoNumber.has(basePo)) {
+            orderByBasePoNumber.set(basePo, { accountId: account.accountId, order });
+          }
+        }
       }
     }
+
+    // Store products per account
+    productsBySkuPerAccount.set(account.accountId, new Map(products.map(p => [p.sku, p])));
+
+    // Initialize SKU stats for this account
+    skuDeliveryStatsPerAccount.set(account.accountId, new Map());
   }
 
   const carriersFound = new Set<string>();
@@ -2093,14 +3277,7 @@ async function handleDeliveryImport(
   let ordersMatched = 0;
   let ordersSkipped = 0;
   let ordersNotFound = 0;
-
-  // Track SKU delivery stats
-  const skuDeliveryStats = new Map<string, {
-    carrierCounts: Record<string, number>;
-    totalDeliveryCost: number;
-    totalQuantity: number;
-    orderCount: number;
-  }>();
+  const accountMatchCounts = new Map<string, number>();
 
   // Process delivery records
   for (const record of deliveryData) {
@@ -2119,27 +3296,31 @@ async function handleDeliveryImport(
     }
 
     const poNumber = record.orderNumber.trim();
-    let matchedOrder = orderByChannelOrderNo.get(poNumber);
+    let matchedData = orderByChannelOrderNo.get(poNumber);
 
-    if (!matchedOrder) {
+    if (!matchedData) {
       const basePoNumber = poNumber.includes('-') ? poNumber.split('-')[0] : poNumber;
-      matchedOrder = orderByBasePoNumber.get(basePoNumber);
+      matchedData = orderByBasePoNumber.get(basePoNumber);
     }
 
-    if (matchedOrder) {
-      await db.updateOrderDelivery(accountId, matchedOrder.orderId, {
+    if (matchedData) {
+      const { accountId, order } = matchedData;
+
+      await db.updateOrderDelivery(accountId, order.orderId, {
         deliveryCarrier: normalizedCarrier,
         deliveryCarrierRaw: record.carrier,
         deliveryParcels: record.parcels,
       });
       ordersMatched++;
+      accountMatchCounts.set(accountId, (accountMatchCounts.get(accountId) || 0) + 1);
 
-      // Aggregate delivery stats by SKU
-      const lines = matchedOrder.lines || [];
+      // Aggregate delivery stats by SKU for this account
+      const skuDeliveryStats = skuDeliveryStatsPerAccount.get(accountId)!;
+      const lines = order.lines || [];
       const carrierCost = carrierCostMap.get(normalizedCarrier) || 0;
       const orderDeliveryCost = carrierCost;
 
-      const totalOrderValue = lines.reduce((sum, line) => {
+      const totalOrderValue = lines.reduce((sum: number, line: any) => {
         const lineValue = line.lineTotalInclVat || ((line.unitPriceInclVat || 0) * (line.quantity || 1));
         return sum + lineValue;
       }, 0);
@@ -2173,10 +3354,12 @@ async function handleDeliveryImport(
     }
   }
 
-  // Auto-create carrier cost entries for any new carriers found
-  const newCarriers: CarrierCost[] = [];
+  // Auto-create carrier cost entries for any new carriers found (in master account only)
+  let newCarriersCreated = 0;
+  const existingCarrierIds = new Set(masterCarrierCosts.map(c => c.carrierId));
+
   for (const carrierId of carriersFound) {
-    if (!carrierCostMap.has(carrierId)) {
+    if (!existingCarrierIds.has(carrierId)) {
       const newCarrier: CarrierCost = {
         carrierId,
         carrierName: carrierId.charAt(0).toUpperCase() + carrierId.slice(1).replace(/_/g, ' '),
@@ -2184,41 +3367,108 @@ async function handleDeliveryImport(
         isActive: true,
         lastUpdated: new Date().toISOString(),
       };
-      newCarriers.push(newCarrier);
-      await db.putCarrierCost(accountId, newCarrier);
+      await db.putCarrierCost(MASTER_CARRIER_ACCOUNT, newCarrier);
+      newCarriersCreated++;
+      console.log(`[DeliveryImport] Created new carrier "${newCarrier.carrierName}" in ${MASTER_CARRIER_ACCOUNT}`);
     }
   }
 
-  // Update product delivery costs based on aggregated stats
-  const productsUpdated: Product[] = [];
-  for (const [sku, stats] of skuDeliveryStats) {
-    const product = productsBySku.get(sku);
-    if (product && stats.totalQuantity > 0) {
-      const deliveryCostPerUnit = stats.totalDeliveryCost / stats.totalQuantity;
-      product.deliveryCost = Math.round(deliveryCostPerUnit * 100) / 100;
-      // Store carrier breakdown as additional field (DynamoDB is schema-less)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (product as any).deliveryCarrierBreakdown = stats.carrierCounts;
-      productsUpdated.push(product);
+  // Update product delivery costs based on aggregated stats (per account)
+  let totalProductsUpdated = 0;
+  for (const account of accounts) {
+    const skuDeliveryStats = skuDeliveryStatsPerAccount.get(account.accountId)!;
+    const productsBySku = productsBySkuPerAccount.get(account.accountId)!;
+    const productsUpdated: Product[] = [];
+
+    for (const [sku, stats] of skuDeliveryStats) {
+      const product = productsBySku.get(sku);
+      if (product && stats.totalQuantity > 0) {
+        const deliveryCostPerUnit = stats.totalDeliveryCost / stats.totalQuantity;
+        product.deliveryCost = Math.round(deliveryCostPerUnit * 100) / 100;
+        // Store carrier breakdown as additional field
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (product as any).deliveryCarrierBreakdown = stats.carrierCounts;
+        productsUpdated.push(product);
+      }
+    }
+
+    if (productsUpdated.length > 0) {
+      console.log(`[DeliveryImport:${account.accountId}] Updating delivery costs for ${productsUpdated.length} products`);
+      await db.batchPutProducts(account.accountId, productsUpdated);
+      totalProductsUpdated += productsUpdated.length;
     }
   }
 
-  if (productsUpdated.length > 0) {
-    console.log(`[DeliveryImport:${accountId}] Updating delivery costs for ${productsUpdated.length} products`);
-    await db.batchPutProducts(accountId, productsUpdated);
-  }
+  // Build account results
+  const accountResults = accounts.map(a => ({
+    accountId: a.accountId,
+    ordersMatched: accountMatchCounts.get(a.accountId) || 0,
+  }));
 
-  console.log(`[DeliveryImport:${accountId}] Complete: ${ordersMatched} matched, ${ordersNotFound} not found, ${ordersSkipped} skipped (excluded carriers)`);
+  console.log(`[DeliveryImport:CrossAccount] Complete: ${ordersMatched} matched across ${accounts.length} accounts, ${ordersNotFound} not found`);
 
   return response(200, {
-    message: 'Delivery import complete',
+    message: 'Delivery import complete (applied to all accounts)',
     ordersProcessed,
     ordersMatched,
     ordersNotFound,
     ordersSkipped,
     excludedCarriers: Array.from(excludedCarriers),
     carriersFound: Array.from(carriersFound),
-    newCarriersCreated: newCarriers.length,
-    productsUpdated: productsUpdated.length,
+    newCarriersCreated,
+    productsUpdated: totalProductsUpdated,
+    accountsProcessed: accounts.length,
+    accountResults,
   });
+}
+
+// ============ Competitor Price Scraping ============
+
+async function handleCompetitors(
+  event: APIGatewayProxyEvent,
+  ctx: AccountContext
+): Promise<APIGatewayProxyResult> {
+  const { accountId } = requireAccountContext(ctx);
+  const method = event.httpMethod;
+  const path = event.path;
+
+  // POST /competitors/scrape/{sku} - Scrape competitor prices for a product
+  if (path.match(/^\/competitors\/scrape\//) && method === 'POST') {
+    const sku = getPathParam(path, 2);
+    if (!sku) {
+      return response(400, { error: 'SKU is required' });
+    }
+
+    const product = await db.getProduct(accountId, sku);
+    if (!product) {
+      return response(404, { error: 'Product not found' });
+    }
+
+    if (!product.competitorUrls || product.competitorUrls.length === 0) {
+      return response(400, { error: 'No competitor URLs configured for this product' });
+    }
+
+    // Scrape all competitor URLs
+    const result = await scrapeProductCompetitors(product);
+
+    // Update the product with scraped prices
+    const updatedProduct = {
+      ...product,
+      competitorUrls: result.updatedUrls,
+      competitorFloorPrice: result.lowestPrice ?? undefined,
+      competitorPricesLastUpdated: new Date().toISOString(),
+    };
+
+    await db.putProduct(accountId, updatedProduct);
+
+    return response(200, {
+      sku,
+      competitorUrls: result.updatedUrls,
+      lowestPrice: result.lowestPrice,
+      errors: result.errors,
+      scrapedAt: updatedProduct.competitorPricesLastUpdated,
+    });
+  }
+
+  return response(404, { error: 'Not found' });
 }

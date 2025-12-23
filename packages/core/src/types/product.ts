@@ -8,7 +8,9 @@ export interface Product {
   balterleySku?: string;
   title: string;
   brand: string;
-  family?: string; // Primary categorisation from Akeneo PIM
+  family?: string; // Primary categorisation from Akeneo PIM (code)
+  familyLabel?: string; // Human-readable family name from Akeneo (UK locale)
+  stockCode?: string; // Parent model SKU from Akeneo (internal material number)
   subcategory?: string; // Secondary categorisation from ChannelEngine
   category?: string; // Alias for subcategory (V1 compatibility)
   familyVariants?: string;

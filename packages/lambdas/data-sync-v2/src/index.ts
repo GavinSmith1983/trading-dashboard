@@ -3,6 +3,7 @@ import {
   createDynamoDBServiceV2,
   createGoogleSheetsService,
   createChannelEngineService,
+  CSCartService,
   AkeneoService,
   AkeneoProductEnrichment,
   Product,
@@ -74,10 +75,19 @@ async function syncAccount(
   account: Account
 ): Promise<number> {
   const accountId = account.accountId;
+  const dataSource = account.dataSource || 'channelengine';
 
-  // Validate account has required configuration
-  if (!account.channelEngine?.apiKey || !account.channelEngine?.tenantId) {
-    throw new Error('ChannelEngine not configured for this account');
+  // Validate account has required configuration based on data source
+  if (dataSource === 'cscart') {
+    if (!account.csCart?.apiKey || !account.csCart?.baseUrl || !account.csCart?.email) {
+      throw new Error('CS-Cart not configured for this account');
+    }
+    console.log(`[${accountId}] Using CS-Cart data source (${account.csCart.baseUrl})`);
+  } else {
+    if (!account.channelEngine?.apiKey || !account.channelEngine?.tenantId) {
+      throw new Error('ChannelEngine not configured for this account');
+    }
+    console.log(`[${accountId}] Using ChannelEngine data source`);
   }
 
   // 1. Get existing products to preserve cost data
@@ -86,7 +96,7 @@ async function syncAccount(
   const existingMap = new Map(existingProducts.map((p) => [p.sku, p]));
   console.log(`[${accountId}] Found ${existingProducts.length} existing products`);
 
-  // 2. Fetch Google Sheets data if configured
+  // 2. Fetch Google Sheets data if configured (skip for CS-Cart accounts)
   let sheetData = new Map<string, {
     amazonPricing?: number;
     ebayPricing?: number;
@@ -95,7 +105,7 @@ async function syncAccount(
     shopifyPricing?: number;
   }>();
 
-  if (account.googleSheets?.spreadsheetId) {
+  if (dataSource !== 'cscart' && account.googleSheets?.spreadsheetId) {
     try {
       console.log(`[${accountId}] Fetching Google Sheets data...`);
       sheetData = await fetchGoogleSheetsData(account);
@@ -103,6 +113,8 @@ async function syncAccount(
     } catch (error) {
       console.warn(`[${accountId}] Failed to fetch Google Sheets, continuing without:`, error);
     }
+  } else if (dataSource === 'cscart') {
+    console.log(`[${accountId}] Skipping Google Sheets (CS-Cart account)`);
   }
 
   // 3. Fetch Akeneo PIM data for product enrichment (Family)
@@ -133,6 +145,7 @@ async function syncAccount(
             categories: [],
             enabled: true,
             updated: product.lastSyncedFromAkeneo || '',
+            parent: product.stockCode || null,
           });
         }
       }
@@ -155,6 +168,7 @@ async function syncAccount(
               categories: [],
               enabled: true,
               updated: product.lastSyncedFromAkeneo || '',
+              parent: product.stockCode || null,
             });
           }
         }
@@ -164,76 +178,85 @@ async function syncAccount(
     console.log(`[${accountId}] Akeneo not configured (no AKENEO_SECRET_ARN)`);
   }
 
-  // 4. Create ChannelEngine service for this account
-  const ceService = createChannelEngineServiceFromAccount(account);
-
-  // 5. Fetch products from ChannelEngine and save incrementally
-  console.log(`[${accountId}] Starting incremental fetch and save from ChannelEngine...`);
+  // 4. Fetch products based on data source and save incrementally
+  console.log(`[${accountId}] Starting incremental fetch and save from ${dataSource}...`);
   let totalSaved = 0;
 
-  await ceService.fetchProducts(async (batchProducts, page, total) => {
+  // Define the batch processing callback (shared between both data sources)
+  const processBatch = async (batchProducts: any[], page: number, total: number) => {
     const timestamp = new Date().toISOString();
 
-    // Note: ChannelEngine API returns PascalCase field names (MerchantProductNo, Name, Brand, etc.)
+    // Note: Both ChannelEngine and CSCartService output the same format
+    // ChannelEngine uses PascalCase (MerchantProductNo, Name, Brand, etc.)
+    // CSCartService transforms CS-Cart data to the same format (merchantProductNo, name, brand, etc. in lowercase)
     const productsToSave: Product[] = batchProducts
-      .filter((ceProduct) => ceProduct.MerchantProductNo) // Skip products without SKU
-      .map((ceProduct) => {
-      const sku = ceProduct.MerchantProductNo;
-      const existing = existingMap.get(sku);
-      const sheetProduct = sku
-        ? (sheetData.get(sku) ||
-           sheetData.get(sku.toUpperCase()) ||
-           sheetData.get(sku.toLowerCase()))
-        : undefined;
+      .filter((product) => product.MerchantProductNo || product.merchantProductNo) // Skip products without SKU
+      .map((product) => {
+        // Support both PascalCase (ChannelEngine raw) and camelCase (CSCartService transformed)
+        const sku = product.MerchantProductNo || product.merchantProductNo;
+        const name = product.Name || product.name;
+        const brand = product.Brand || product.brand;
+        const categoryTrail = product.CategoryTrail || product.categoryTrail;
+        const imageUrl = product.ImageUrl || product.imageUrl;
+        const price = product.Price ?? product.price;
+        const stock = product.Stock ?? product.stock;
+        const weight = product.Weight ?? product.weight;
 
-      // Get Akeneo enrichment data (try exact match, then uppercase, then lowercase)
-      const akeneoProduct = sku
-        ? (akeneoData.get(sku) ||
-           akeneoData.get(sku.toUpperCase()) ||
-           akeneoData.get(sku.toLowerCase()))
-        : undefined;
+        const existing = existingMap.get(sku);
+        const sheetProduct = sku
+          ? (sheetData.get(sku) ||
+             sheetData.get(sku.toUpperCase()) ||
+             sheetData.get(sku.toLowerCase()))
+          : undefined;
 
-      // Build channel prices from Google Sheets
-      const channelPrices = sheetProduct
-        ? {
-            amazon: sheetProduct.amazonPricing || undefined,
-            ebay: sheetProduct.ebayPricing || undefined,
-            onbuy: sheetProduct.ebayPricing || undefined,
-            debenhams: sheetProduct.ebayPricing || undefined,
-            bandq: sheetProduct.bandqPricing || undefined,
-            manomano: sheetProduct.manoManoPricing || undefined,
-            shopify: sheetProduct.shopifyPricing || undefined,
-          }
-        : existing?.channelPrices;
+        // Get Akeneo enrichment data (try exact match, then uppercase, then lowercase)
+        const akeneoProduct = sku
+          ? (akeneoData.get(sku) ||
+             akeneoData.get(sku.toUpperCase()) ||
+             akeneoData.get(sku.toLowerCase()))
+          : undefined;
 
-      return {
-        sku,
-        title: ceProduct.Name || sku,
-        brand: ceProduct.Brand || 'Unknown',
-        // Family from Akeneo PIM (primary categorisation)
-        family: akeneoProduct?.family || existing?.family,
-        // Subcategory from ChannelEngine CategoryTrail (secondary categorisation)
-        subcategory: ceProduct.CategoryTrail || existing?.subcategory || 'Uncategorized',
-        imageUrl: ceProduct.ImageUrl || existing?.imageUrl,
-        mrp: existing?.mrp || 0,
-        currentPrice: ceProduct.Price,
-        channelPrices,
-        costPrice: existing?.costPrice || 0,
-        deliveryCost: existing?.deliveryCost || 0,
-        weight: ceProduct.Weight || existing?.weight,
-        stockLevel: ceProduct.Stock,
-        stockLastUpdated: timestamp,
-        salesLast7Days: existing?.salesLast7Days || 0,
-        salesLast30Days: existing?.salesLast30Days || 0,
-        lastUpdated: timestamp,
-        lastSyncedFromChannelEngine: timestamp,
-        lastSyncedFromSheet: sheetProduct ? timestamp : existing?.lastSyncedFromSheet,
-        // Only update Akeneo timestamp if we refreshed from API (not from cache)
-        lastSyncedFromAkeneo: (shouldRefreshAkeneo && akeneoProduct) ? timestamp : existing?.lastSyncedFromAkeneo,
-        competitorUrls: existing?.competitorUrls,
-        competitorFloorPrice: existing?.competitorFloorPrice,
-      };
-    });
+        // Build channel prices from Google Sheets (only for non-CS-Cart accounts)
+        const channelPrices = sheetProduct
+          ? {
+              amazon: sheetProduct.amazonPricing || undefined,
+              ebay: sheetProduct.ebayPricing || undefined,
+              onbuy: sheetProduct.ebayPricing || undefined,
+              debenhams: sheetProduct.ebayPricing || undefined,
+              bandq: sheetProduct.bandqPricing || undefined,
+              manomano: sheetProduct.manoManoPricing || undefined,
+              shopify: sheetProduct.shopifyPricing || undefined,
+            }
+          : existing?.channelPrices;
+
+        return {
+          sku,
+          title: name || sku,
+          brand: brand || 'Unknown',
+          // Family from Akeneo PIM (primary categorisation)
+          family: akeneoProduct?.family || existing?.family,
+          // Subcategory from ChannelEngine/CS-Cart CategoryTrail (secondary categorisation)
+          subcategory: categoryTrail || existing?.subcategory || 'Uncategorized',
+          imageUrl: imageUrl || existing?.imageUrl,
+          mrp: existing?.mrp || 0,
+          currentPrice: price,
+          channelPrices,
+          costPrice: existing?.costPrice || 0,
+          deliveryCost: existing?.deliveryCost || 0,
+          weight: weight || existing?.weight,
+          stockLevel: stock,
+          stockLastUpdated: timestamp,
+          salesLast7Days: existing?.salesLast7Days || 0,
+          salesLast30Days: existing?.salesLast30Days || 0,
+          lastUpdated: timestamp,
+          lastSyncedFromChannelEngine: timestamp, // Reused for both data sources
+          lastSyncedFromSheet: sheetProduct ? timestamp : existing?.lastSyncedFromSheet,
+          // Only update Akeneo timestamp if we refreshed from API (not from cache)
+          lastSyncedFromAkeneo: (shouldRefreshAkeneo && akeneoProduct) ? timestamp : existing?.lastSyncedFromAkeneo,
+          competitorUrls: existing?.competitorUrls,
+          competitorFloorPrice: existing?.competitorFloorPrice,
+        };
+      });
 
     // Save to DynamoDB with accountId
     await db.batchPutProducts(accountId, productsToSave);
@@ -242,7 +265,21 @@ async function syncAccount(
     console.log(
       `[${accountId}] Saved batch ${page}: ${productsToSave.length} products (${totalSaved}/${total} total)`
     );
-  });
+  };
+
+  // Fetch products from the appropriate data source
+  if (dataSource === 'cscart' && account.csCart) {
+    const csCartService = new CSCartService({
+      baseUrl: account.csCart.baseUrl,
+      email: account.csCart.email,
+      apiKey: account.csCart.apiKey,
+      companyId: account.csCart.companyId,
+    });
+    await csCartService.fetchProducts(processBatch);
+  } else {
+    const ceService = createChannelEngineServiceFromAccount(account);
+    await ceService.fetchProducts(processBatch);
+  }
 
   // 6. Calculate and update sales data from order lines
   console.log(`[${accountId}] Calculating sales data from order lines...`);
@@ -304,13 +341,20 @@ async function fetchGoogleSheetsData(
   shopifyPricing?: number;
   singlePrice?: number;
 }>> {
+  // Guard: ensure googleSheets is configured
+  if (!account.googleSheets) {
+    throw new Error('Google Sheets not configured for this account');
+  }
+
+  const googleSheets = account.googleSheets;
+
   // Get credentials from Secrets Manager
   let credentials: string | undefined;
 
-  if (account.googleSheets.credentialsSecretArn) {
+  if (googleSheets.credentialsSecretArn) {
     const secretResponse = await secretsClient.send(
       new GetSecretValueCommand({
-        SecretId: account.googleSheets.credentialsSecretArn,
+        SecretId: googleSheets.credentialsSecretArn,
       })
     );
     credentials = secretResponse.SecretString;
@@ -321,8 +365,11 @@ async function fetchGoogleSheetsData(
       const secretResponse = await secretsClient.send(
         new GetSecretValueCommand({ SecretId: defaultSecretArn })
       );
-      const secretData = JSON.parse(secretResponse.SecretString || '{}');
-      credentials = secretData.credentials;
+      // Secret can be either raw service account JSON or wrapped in { credentials: ... }
+      const secretString = secretResponse.SecretString || '{}';
+      const secretData = JSON.parse(secretString);
+      // If it has a 'credentials' property, use that; otherwise use the secret directly
+      credentials = secretData.credentials || secretString;
     }
   }
 
@@ -332,11 +379,11 @@ async function fetchGoogleSheetsData(
 
   const sheetsService = createGoogleSheetsService(
     credentials,
-    account.googleSheets.spreadsheetId
+    googleSheets.spreadsheetId
   );
 
   // Get column mapping from account config (with defaults for backwards compatibility)
-  const columnMapping = account.googleSheets.columnMapping || {
+  const columnMapping = googleSheets.columnMapping || {
     skuColumn: 'C',
     pricingMode: 'multi' as const,
     channelPriceColumns: {
@@ -410,8 +457,15 @@ async function fetchGoogleSheetsData(
  * Create ChannelEngine service from account config
  */
 function createChannelEngineServiceFromAccount(account: Account) {
+  // Guard: ensure channelEngine is configured
+  if (!account.channelEngine) {
+    throw new Error('ChannelEngine not configured for this account');
+  }
+
+  const channelEngine = account.channelEngine;
+
   // Build base URL from tenant ID (e.g., ku-bathrooms -> https://ku-bathrooms.channelengine.net/api/v2)
-  const tenantId = account.channelEngine.tenantId;
+  const tenantId = channelEngine.tenantId;
   const baseUrl = `https://${tenantId}.channelengine.net/api/v2`;
 
   return {
@@ -427,7 +481,7 @@ function createChannelEngineServiceFromAccount(account: Account) {
           `${baseUrl}/products?page=${page}&pageSize=${pageSize}`,
           {
             headers: {
-              'X-CE-KEY': account.channelEngine.apiKey,
+              'X-CE-KEY': channelEngine.apiKey,
               'Content-Type': 'application/json',
             },
           }

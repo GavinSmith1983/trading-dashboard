@@ -41,6 +41,7 @@ export class DynamoDBServiceV2 {
   private carrierCostsTable: string;
   private skuHistoryTable: string;
   private priceChangesTable: string;
+  private importJobsTable: string;
 
   // Cache for active accounts (reduces scan calls from scheduled lambdas)
   private activeAccountsCache: { data: Account[]; timestamp: number } | null = null;
@@ -57,6 +58,7 @@ export class DynamoDBServiceV2 {
     carrierCostsTable?: string;
     skuHistoryTable?: string;
     priceChangesTable?: string;
+    importJobsTable?: string;
   }) {
     const client = new DynamoDBClient({});
     this.docClient = DynamoDBDocumentClient.from(client, {
@@ -73,6 +75,7 @@ export class DynamoDBServiceV2 {
     this.carrierCostsTable = config.carrierCostsTable || 'repricing-v2-carrier-costs';
     this.skuHistoryTable = config.skuHistoryTable || 'repricing-v2-sku-history';
     this.priceChangesTable = config.priceChangesTable || 'repricing-v2-price-changes';
+    this.importJobsTable = config.importJobsTable || 'repricing-v2-import-jobs';
   }
 
   // ============ Accounts ============
@@ -231,17 +234,39 @@ export class DynamoDBServiceV2 {
     const chunks = this.chunkArray(products, 25);
 
     for (const chunk of chunks) {
-      await this.docClient.send(
-        new BatchWriteCommand({
-          RequestItems: {
-            [this.productsTable]: chunk.map((product) => ({
-              PutRequest: {
-                Item: { ...product, accountId, lastUpdated: timestamp },
-              },
-            })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let requestItems: Record<string, any[]> = {
+        [this.productsTable]: chunk.map((product) => ({
+          PutRequest: {
+            Item: { ...product, accountId, lastUpdated: timestamp },
           },
-        })
-      );
+        })),
+      };
+
+      // Retry unprocessed items with exponential backoff
+      let retries = 0;
+      const maxRetries = 5;
+
+      while (Object.keys(requestItems).length > 0 && retries < maxRetries) {
+        const result = await this.docClient.send(
+          new BatchWriteCommand({ RequestItems: requestItems })
+        );
+
+        if (result.UnprocessedItems && Object.keys(result.UnprocessedItems).length > 0) {
+          requestItems = result.UnprocessedItems as Record<string, any[]>;
+          retries++;
+          // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+          await new Promise((resolve) => setTimeout(resolve, 50 * Math.pow(2, retries)));
+        } else {
+          break;
+        }
+      }
+
+      if (retries >= maxRetries && Object.keys(requestItems).length > 0) {
+        console.error(
+          `[DynamoDB] Failed to write ${Object.values(requestItems).flat().length} items after ${maxRetries} retries`
+        );
+      }
     }
   }
 
@@ -711,6 +736,42 @@ export class DynamoDBServiceV2 {
     return orders;
   }
 
+  /**
+   * Get orders by date range (using GSI by-account-date)
+   * Returns full order records including buyer info
+   */
+  async getOrdersByDateRange(
+    accountId: string,
+    fromDate: string,
+    toDate: string
+  ): Promise<Order[]> {
+    const allOrders: Order[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new QueryCommand({
+          TableName: this.ordersTable,
+          IndexName: 'by-account-date',
+          KeyConditionExpression: 'accountId = :accountId AND orderDateDay BETWEEN :fromDate AND :toDate',
+          ExpressionAttributeValues: {
+            ':accountId': accountId,
+            ':fromDate': fromDate,
+            ':toDate': toDate,
+          },
+          ExclusiveStartKey: lastKey,
+        })
+      );
+
+      if (result.Items) {
+        allOrders.push(...(result.Items as Order[]));
+      }
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return allOrders;
+  }
+
   async updateOrderDelivery(
     accountId: string,
     orderId: string,
@@ -861,6 +922,44 @@ export class DynamoDBServiceV2 {
 
       if (result.Items) {
         allLines.push(...(result.Items as OrderLineRecord[]));
+      }
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return allLines;
+  }
+
+  /**
+   * Optimized version that only fetches fields needed for sales aggregation.
+   * Returns ~70% less data than getOrderLinesByDateRange.
+   */
+  async getOrderLinesForAggregation(
+    accountId: string,
+    fromDate: string,
+    toDate: string
+  ): Promise<Pick<OrderLineRecord, 'sku' | 'channelName' | 'quantity' | 'lineTotalInclVat' | 'orderDateDay' | 'orderId' | 'orderDate'>[]> {
+    const allLines: Pick<OrderLineRecord, 'sku' | 'channelName' | 'quantity' | 'lineTotalInclVat' | 'orderDateDay' | 'orderId' | 'orderDate'>[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.docClient.send(
+        new QueryCommand({
+          TableName: this.orderLinesTable,
+          IndexName: 'by-account-date',
+          KeyConditionExpression: 'accountId = :accountId AND orderDateDay BETWEEN :fromDate AND :toDate',
+          ExpressionAttributeValues: {
+            ':accountId': accountId,
+            ':fromDate': fromDate,
+            ':toDate': toDate,
+          },
+          // Only fetch fields needed for aggregation - reduces data transfer by ~70%
+          ProjectionExpression: 'sku, channelName, quantity, lineTotalInclVat, orderDateDay, orderId, orderDate',
+          ExclusiveStartKey: lastKey,
+        })
+      );
+
+      if (result.Items) {
+        allLines.push(...(result.Items as Pick<OrderLineRecord, 'sku' | 'channelName' | 'quantity' | 'lineTotalInclVat' | 'orderDateDay' | 'orderId' | 'orderDate'>[]));
       }
       lastKey = result.LastEvaluatedKey;
     } while (lastKey);
@@ -1066,6 +1165,82 @@ export class DynamoDBServiceV2 {
     }
     return chunks;
   }
+
+  // ============ Import Jobs ============
+
+  /**
+   * Create a new import job with processing status
+   */
+  async createImportJob(jobId: string, type: 'costs' | 'delivery'): Promise<void> {
+    const now = new Date();
+    const ttl = Math.floor(now.getTime() / 1000) + 24 * 60 * 60; // 24 hours from now
+
+    await this.docClient.send(
+      new PutCommand({
+        TableName: this.importJobsTable,
+        Item: {
+          jobId,
+          type,
+          status: 'processing',
+          createdAt: now.toISOString(),
+          ttl,
+        },
+      })
+    );
+  }
+
+  /**
+   * Get an import job by ID
+   */
+  async getImportJob(jobId: string): Promise<{
+    jobId: string;
+    type: 'costs' | 'delivery';
+    status: 'processing' | 'completed' | 'failed';
+    createdAt: string;
+    completedAt?: string;
+    result?: Record<string, unknown>;
+  } | null> {
+    const result = await this.docClient.send(
+      new GetCommand({
+        TableName: this.importJobsTable,
+        Key: { jobId },
+      })
+    );
+    return result.Item as {
+      jobId: string;
+      type: 'costs' | 'delivery';
+      status: 'processing' | 'completed' | 'failed';
+      createdAt: string;
+      completedAt?: string;
+      result?: Record<string, unknown>;
+    } | null;
+  }
+
+  /**
+   * Update import job with completion status and result
+   */
+  async completeImportJob(
+    jobId: string,
+    status: 'completed' | 'failed',
+    result: Record<string, unknown>
+  ): Promise<void> {
+    await this.docClient.send(
+      new UpdateCommand({
+        TableName: this.importJobsTable,
+        Key: { jobId },
+        UpdateExpression: 'SET #status = :status, completedAt = :completedAt, #result = :result',
+        ExpressionAttributeNames: {
+          '#status': 'status',
+          '#result': 'result',
+        },
+        ExpressionAttributeValues: {
+          ':status': status,
+          ':completedAt': new Date().toISOString(),
+          ':result': result,
+        },
+      })
+    );
+  }
 }
 
 /**
@@ -1083,5 +1258,28 @@ export function createDynamoDBServiceV2(): DynamoDBServiceV2 {
     carrierCostsTable: process.env.CARRIER_COSTS_TABLE || 'repricing-v2-carrier-costs',
     skuHistoryTable: process.env.SKU_HISTORY_TABLE || 'repricing-v2-sku-history',
     priceChangesTable: process.env.PRICE_CHANGES_TABLE || 'repricing-v2-price-changes',
+    importJobsTable: process.env.IMPORT_JOBS_TABLE || 'repricing-v2-import-jobs',
   });
+}
+
+/**
+ * Import job status type
+ */
+export interface ImportJob {
+  jobId: string;
+  type: 'costs' | 'delivery';
+  status: 'processing' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  result?: {
+    totalUpdated?: number;
+    matchedByBalterleySku?: number;
+    totalRecords?: number;
+    accountsProcessed?: number;
+    accountResults?: Array<{ accountId: string; updated: number; matchedByBalterley: number }>;
+    notFoundInAnyAccount?: number;
+    sampleNotFound?: string[];
+    error?: string;
+  };
+  ttl: number; // Auto-expire after 24 hours
 }

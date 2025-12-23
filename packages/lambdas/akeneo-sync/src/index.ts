@@ -161,6 +161,8 @@ export async function handler(
 
 // Cache for Akeneo products - fetched once per Lambda invocation
 let akeneoProductsCache: Map<string, AkeneoProductEnrichment> | null = null;
+// Cache for Akeneo family labels - fetched once per Lambda invocation
+let familyLabelsCache: Map<string, string> | null = null;
 
 async function syncAccountProducts(
   db: ReturnType<typeof createDynamoDBServiceV2>,
@@ -188,6 +190,24 @@ async function syncAccountProducts(
       productsFailed: 0,
       durationMs: Date.now() - startTime,
     };
+  }
+
+  // Fetch family labels from Akeneo (for human-readable display)
+  if (!familyLabelsCache) {
+    console.log(`[AkeneoSync] Fetching family labels from Akeneo...`);
+    familyLabelsCache = new Map();
+    try {
+      const families = await akeneo.fetchFamilies();
+      for (const family of families) {
+        // Prefer en_GB, fall back to en_US, then first available, then code
+        const label = family.labels['en_GB'] || family.labels['en_US'] || Object.values(family.labels)[0] || family.code;
+        familyLabelsCache.set(family.code, label);
+      }
+      console.log(`[AkeneoSync] Fetched ${familyLabelsCache.size} family labels`);
+    } catch (error) {
+      console.error(`[AkeneoSync] Failed to fetch family labels:`, error);
+      // Continue without labels - will fall back to codes
+    }
   }
 
   // Fetch ALL products from Akeneo once (paginated, ~100 per page)
@@ -226,8 +246,27 @@ async function syncAccountProducts(
 
     try {
       if (akeneoProduct && akeneoProduct.family) {
+        // Get the human-readable label for the family
+        const familyLabel = familyLabelsCache?.get(akeneoProduct.family) || akeneoProduct.family;
         await db.updateProduct(accountId, sku, {
           family: akeneoProduct.family,
+          familyLabel: familyLabel,
+          stockCode: akeneoProduct.parent || undefined,  // Parent model SKU (Stock Code)
+          lastSyncedFromAkeneo: timestamp,
+        });
+        matched++;
+      } else if (akeneoProduct && akeneoProduct.parent) {
+        // Product has parent (Stock Code) but no family - still store the parent
+        await db.updateProduct(accountId, sku, {
+          stockCode: akeneoProduct.parent,
+          lastSyncedFromAkeneo: timestamp,
+        });
+        matched++;
+      } else if (product.family && !product.familyLabel && familyLabelsCache) {
+        // Product has family code but no label - look up label from cache
+        const familyLabel = familyLabelsCache.get(product.family) || product.family;
+        await db.updateProduct(accountId, sku, {
+          familyLabel: familyLabel,
           lastSyncedFromAkeneo: timestamp,
         });
         matched++;
@@ -270,7 +309,8 @@ async function syncAccountProducts(
 /**
  * Find products that need Akeneo sync:
  * 1. Products with no family assigned
- * 2. Products with family data older than refreshDays
+ * 2. Products with no stockCode assigned
+ * 3. Products with family data older than refreshDays
  */
 function findProductsNeedingSync(products: Product[], refreshDays: number): Product[] {
   const oldestAllowedSync = new Date();
@@ -280,6 +320,16 @@ function findProductsNeedingSync(products: Product[], refreshDays: number): Prod
   return products.filter(p => {
     // No family assigned - needs sync
     if (!p.family) {
+      return true;
+    }
+
+    // Has family but no familyLabel - needs sync to get label
+    if (p.family && !p.familyLabel) {
+      return true;
+    }
+
+    // No stockCode assigned - needs sync to get parent model SKU
+    if (!p.stockCode) {
       return true;
     }
 

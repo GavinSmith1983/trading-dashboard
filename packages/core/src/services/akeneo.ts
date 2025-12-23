@@ -73,6 +73,7 @@ export interface AkeneoProductEnrichment {
   categories: string[];
   enabled: boolean;
   updated: string;
+  parent: string | null;  // Stock Code - parent model SKU (internal material number)
 }
 
 /**
@@ -260,6 +261,7 @@ export class AkeneoService {
         categories: p.categories,
         enabled: p.enabled,
         updated: p.updated,
+        parent: p.parent,
       }));
 
       // Add to map
@@ -306,6 +308,7 @@ export class AkeneoService {
         categories: product.categories,
         enabled: product.enabled,
         updated: product.updated,
+        parent: product.parent,
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes('404')) {
