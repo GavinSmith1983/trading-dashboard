@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { Search, Edit2, Save, X, Package, TrendingUp, ChevronUp, ChevronDown, ChevronsUpDown, Filter, ChevronLeft, ChevronRight, History, Layers } from 'lucide-react';
 import { productsApi, type ProductWithSales } from '../api';
 import { useAccountQuery } from '../hooks/useAccountQuery';
 import { useAccount } from '../context/AccountContext';
@@ -12,20 +12,22 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '.
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
 
-type SortField = 'sku' | 'brand' | 'price' | 'cost' | 'delivery' | 'twentyPercent' | 'ppo' | 'margin' | 'stock' | 'avgSales' | 'avgRevenue';
+type SortField = 'sku' | 'brand' | 'price' | 'cost' | 'delivery' | 'channelFee' | 'ppo' | 'margin' | 'stock' | 'avgSales' | 'avgRevenue';
 type SortDirection = 'asc' | 'desc';
 type StockFilter = 'all' | 'in-stock' | 'out-of-stock';
 type MarginFilter = 'all' | 'negative' | 'low' | 'good';
 
 // Helper function to calculate derived values for a product
-const getProductMetrics = (product: Product) => {
+// channelFeePercent is 0-100 (e.g., 15 for 15%), defaults to 15%
+const getProductMetrics = (product: Product, channelFeePercent: number = 15) => {
   const priceExVat = (product.currentPrice || 0) / 1.2;
-  const twentyPercent = priceExVat * 0.2;
+  const channelFeeRate = channelFeePercent / 100;
+  const channelFee = priceExVat * channelFeeRate;
   const delivery = product.deliveryCost || 0;
   const cost = product.costPrice || 0;
-  const ppo = priceExVat - twentyPercent - delivery - cost;
+  const ppo = priceExVat - channelFee - delivery - cost;
   const margin = priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
-  return { priceExVat, twentyPercent, ppo, margin };
+  return { priceExVat, channelFee, ppo, margin };
 };
 
 // Sort icon renderer (not a component to avoid hook issues)
@@ -43,7 +45,8 @@ export default function Products() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { accountId } = useAccountQuery();
-  const { currencySymbol } = useAccount();
+  const { currencySymbol, currentAccount } = useAccount();
+  const channelFeePercent = currentAccount?.settings?.defaultChannelFeePercent ?? 15;
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editCost, setEditCost] = useState('');
@@ -55,6 +58,8 @@ export default function Products() {
   const [marginFilter, setMarginFilter] = useState<MarginFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [showStockCodes, setShowStockCodes] = useState(false);
+  const [expandedStockCodes, setExpandedStockCodes] = useState<Set<string>>(new Set());
 
   const hasAccount = accountId !== 'no-account';
   const salesDays = 90;
@@ -99,7 +104,7 @@ export default function Products() {
 
       // Margin filter
       if (marginFilter !== 'all') {
-        const { margin } = getProductMetrics(product);
+        const { margin } = getProductMetrics(product, channelFeePercent);
         if (marginFilter === 'negative' && margin >= 0) return false;
         if (marginFilter === 'low' && (margin < 0 || margin >= 20)) return false;
         if (marginFilter === 'good' && margin < 20) return false;
@@ -108,54 +113,60 @@ export default function Products() {
       return true;
     });
 
-    return filtered.sort((a, b) => {
+    // Precompute metrics once before sorting to avoid redundant calculations
+    const productsWithMetrics = filtered.map(product => ({
+      product,
+      metrics: getProductMetrics(product, channelFeePercent)
+    }));
+
+    return productsWithMetrics.sort((a, b) => {
       let valueA: number | string;
       let valueB: number | string;
 
       switch (sortField) {
         case 'sku':
-          valueA = a.sku.toLowerCase();
-          valueB = b.sku.toLowerCase();
+          valueA = a.product.sku.toLowerCase();
+          valueB = b.product.sku.toLowerCase();
           break;
         case 'brand':
-          valueA = (a.brand || '').toLowerCase();
-          valueB = (b.brand || '').toLowerCase();
+          valueA = (a.product.brand || '').toLowerCase();
+          valueB = (b.product.brand || '').toLowerCase();
           break;
         case 'price':
-          valueA = a.currentPrice || 0;
-          valueB = b.currentPrice || 0;
+          valueA = a.product.currentPrice || 0;
+          valueB = b.product.currentPrice || 0;
           break;
         case 'cost':
-          valueA = a.costPrice || 0;
-          valueB = b.costPrice || 0;
+          valueA = a.product.costPrice || 0;
+          valueB = b.product.costPrice || 0;
           break;
         case 'delivery':
-          valueA = a.deliveryCost || 0;
-          valueB = b.deliveryCost || 0;
+          valueA = a.product.deliveryCost || 0;
+          valueB = b.product.deliveryCost || 0;
           break;
-        case 'twentyPercent':
-          valueA = getProductMetrics(a).twentyPercent;
-          valueB = getProductMetrics(b).twentyPercent;
+        case 'channelFee':
+          valueA = a.metrics.channelFee;
+          valueB = b.metrics.channelFee;
           break;
         case 'ppo':
-          valueA = getProductMetrics(a).ppo;
-          valueB = getProductMetrics(b).ppo;
+          valueA = a.metrics.ppo;
+          valueB = b.metrics.ppo;
           break;
         case 'margin':
-          valueA = getProductMetrics(a).margin;
-          valueB = getProductMetrics(b).margin;
+          valueA = a.metrics.margin;
+          valueB = b.metrics.margin;
           break;
         case 'stock':
-          valueA = a.stockLevel || 0;
-          valueB = b.stockLevel || 0;
+          valueA = a.product.stockLevel || 0;
+          valueB = b.product.stockLevel || 0;
           break;
         case 'avgSales':
-          valueA = (a.salesQuantity || 0) / salesDays;
-          valueB = (b.salesQuantity || 0) / salesDays;
+          valueA = (a.product.salesQuantity || 0) / salesDays;
+          valueB = (b.product.salesQuantity || 0) / salesDays;
           break;
         case 'avgRevenue':
-          valueA = (a.salesRevenue || 0) / salesDays;
-          valueB = (b.salesRevenue || 0) / salesDays;
+          valueA = (a.product.salesRevenue || 0) / salesDays;
+          valueB = (b.product.salesRevenue || 0) / salesDays;
           break;
         default:
           return 0;
@@ -170,8 +181,8 @@ export default function Products() {
       return sortDirection === 'asc'
         ? (valueA as number) - (valueB as number)
         : (valueB as number) - (valueA as number);
-    });
-  }, [products, searchTerm, sortField, sortDirection, stockFilter, missingCostFilter, marginFilter, salesDays]);
+    }).map(pm => pm.product);
+  }, [products, searchTerm, sortField, sortDirection, stockFilter, missingCostFilter, marginFilter, channelFeePercent]);
 
   // Calculate pagination values
   const totalPages = Math.ceil(filteredProducts.length / pageSize);
@@ -209,6 +220,115 @@ export default function Products() {
       setSortDirection('desc');
     }
   };
+
+  // Toggle expanded Stock Code
+  const toggleExpandedStockCode = (stockCode: string) => {
+    setExpandedStockCodes(prev => {
+      const next = new Set(prev);
+      if (next.has(stockCode)) {
+        next.delete(stockCode);
+      } else {
+        next.add(stockCode);
+      }
+      return next;
+    });
+  };
+
+  // Group products by Stock Code for aggregated view
+  interface StockCodeGroup {
+    stockCode: string;
+    products: ProductWithSales[];
+    totalStock: number;
+    totalSalesQuantity: number;
+    totalSalesRevenue: number;
+    avgDailySales: number;
+    avgDailyRevenue: number;
+    avgPrice: number;
+    avgCost: number;
+    avgMargin: number;
+  }
+
+  const stockCodeGroups = useMemo(() => {
+    if (!showStockCodes) return [];
+
+    // Group products by stockCode (use SKU as fallback if no stockCode)
+    const groups = new Map<string, ProductWithSales[]>();
+    for (const product of filteredProducts) {
+      const stockCode = product.stockCode || product.sku;
+      if (!groups.has(stockCode)) {
+        groups.set(stockCode, []);
+      }
+      groups.get(stockCode)!.push(product);
+    }
+
+    // Calculate aggregated metrics for each group
+    const groupsArray: StockCodeGroup[] = [];
+    for (const [stockCode, products] of groups) {
+      const totalStock = products.reduce((sum, p) => sum + (p.stockLevel || 0), 0);
+      const totalSalesQuantity = products.reduce((sum, p) => sum + (p.salesQuantity || 0), 0);
+      const totalSalesRevenue = products.reduce((sum, p) => sum + (p.salesRevenue || 0), 0);
+      const avgDailySales = totalSalesQuantity / salesDays;
+      const avgDailyRevenue = totalSalesRevenue / salesDays;
+
+      // Calculate weighted average price and cost (weighted by stock level)
+      const totalStockForAvg = totalStock > 0 ? totalStock : products.length;
+      const weightedPrice = products.reduce((sum, p) => {
+        const weight = totalStock > 0 ? (p.stockLevel || 0) : 1;
+        return sum + (p.currentPrice || 0) * weight;
+      }, 0) / totalStockForAvg;
+      const weightedCost = products.reduce((sum, p) => {
+        const weight = totalStock > 0 ? (p.stockLevel || 0) : 1;
+        return sum + (p.costPrice || 0) * weight;
+      }, 0) / totalStockForAvg;
+
+      // Calculate average margin
+      const margins = products.map(p => getProductMetrics(p, channelFeePercent).margin);
+      const avgMargin = margins.length > 0 ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+
+      groupsArray.push({
+        stockCode,
+        products,
+        totalStock,
+        totalSalesQuantity,
+        totalSalesRevenue,
+        avgDailySales,
+        avgDailyRevenue,
+        avgPrice: weightedPrice,
+        avgCost: weightedCost,
+        avgMargin,
+      });
+    }
+
+    // Sort groups by avgDailySales descending (same as default sort)
+    return groupsArray.sort((a, b) => {
+      switch (sortField) {
+        case 'stock':
+          return sortDirection === 'asc' ? a.totalStock - b.totalStock : b.totalStock - a.totalStock;
+        case 'avgSales':
+          return sortDirection === 'asc' ? a.avgDailySales - b.avgDailySales : b.avgDailySales - a.avgDailySales;
+        case 'avgRevenue':
+          return sortDirection === 'asc' ? a.avgDailyRevenue - b.avgDailyRevenue : b.avgDailyRevenue - a.avgDailyRevenue;
+        case 'price':
+          return sortDirection === 'asc' ? a.avgPrice - b.avgPrice : b.avgPrice - a.avgPrice;
+        case 'cost':
+          return sortDirection === 'asc' ? a.avgCost - b.avgCost : b.avgCost - a.avgCost;
+        case 'margin':
+          return sortDirection === 'asc' ? a.avgMargin - b.avgMargin : b.avgMargin - a.avgMargin;
+        default:
+          return b.avgDailySales - a.avgDailySales;
+      }
+    });
+  }, [showStockCodes, filteredProducts, salesDays, sortField, sortDirection, channelFeePercent]);
+
+  // Paginate Stock Code groups
+  const paginatedStockCodeGroups = useMemo(() => {
+    if (!showStockCodes) return [];
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return stockCodeGroups.slice(startIndex, endIndex);
+  }, [showStockCodes, stockCodeGroups, currentPage, pageSize]);
+
+  const totalStockCodePages = Math.ceil(stockCodeGroups.length / pageSize);
 
   if (isLoading) {
     return (
@@ -431,13 +551,49 @@ export default function Products() {
             {/* Spacer */}
             <div className="flex-1" />
 
+            {/* SKU/Stock Code Toggle */}
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-gray-400" />
+              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                <button
+                  onClick={() => { setShowStockCodes(false); resetPage(); setExpandedStockCodes(new Set()); }}
+                  className={`px-3 py-1.5 text-sm transition-colors ${
+                    !showStockCodes
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  SKU
+                </button>
+                <button
+                  onClick={() => { setShowStockCodes(true); resetPage(); }}
+                  className={`px-3 py-1.5 text-sm border-l border-gray-300 transition-colors ${
+                    showStockCodes
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Stock Code
+                </button>
+              </div>
+            </div>
+
             {/* Listing count */}
             <div className="text-sm text-gray-600">
-              <span className="font-medium">{filteredProducts.length.toLocaleString()}</span>
-              {filteredProducts.length !== products.length && (
-                <span> of {products.length.toLocaleString()}</span>
+              {showStockCodes ? (
+                <>
+                  <span className="font-medium">{stockCodeGroups.length.toLocaleString()}</span> stock codes
+                  <span className="text-gray-400"> ({filteredProducts.length.toLocaleString()} SKUs)</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-medium">{filteredProducts.length.toLocaleString()}</span>
+                  {filteredProducts.length !== products.length && (
+                    <span> of {products.length.toLocaleString()}</span>
+                  )}
+                  {' '}products
+                </>
               )}
-              {' '}products
             </div>
           </div>
         </CardContent>
@@ -492,10 +648,10 @@ export default function Products() {
               </TableHead>
               <TableHead>
                 <button
-                  onClick={() => handleSort('twentyPercent')}
+                  onClick={() => handleSort('channelFee')}
                   className="flex items-center gap-1 hover:text-blue-600 transition-colors"
                 >
-                  20% Costs {renderSortIcon('twentyPercent', sortField, sortDirection)}
+                  {channelFeePercent}% Fee {renderSortIcon('channelFee', sortField, sortDirection)}
                 </button>
               </TableHead>
               <TableHead>
@@ -548,7 +704,144 @@ export default function Products() {
                   No products found
                 </TableCell>
               </TableRow>
+            ) : showStockCodes ? (
+              /* Stock Code grouped view */
+              paginatedStockCodeGroups.flatMap((group) => {
+                const isExpanded = expandedStockCodes.has(group.stockCode);
+                const hasMultipleProducts = group.products.length > 1;
+
+                const rows = [
+                  // Stock Code group row
+                  <TableRow
+                    key={group.stockCode}
+                    className={`${hasMultipleProducts ? 'cursor-pointer hover:bg-blue-50' : 'hover:bg-gray-50'}`}
+                    onClick={() => hasMultipleProducts && toggleExpandedStockCode(group.stockCode)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {hasMultipleProducts && (
+                          isExpanded
+                            ? <ChevronDown className="h-4 w-4 text-gray-400" />
+                            : <ChevronRight className="h-4 w-4 text-gray-400" />
+                        )}
+                        {!hasMultipleProducts && <span className="w-4" />}
+                        <div className="w-10 h-10 bg-purple-100 rounded border border-purple-200 flex items-center justify-center">
+                          <Layers className="h-5 w-5 text-purple-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium font-mono text-purple-700">{group.stockCode}</p>
+                          <p className="text-sm text-gray-500">
+                            {group.products.length} variant{group.products.length > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge>{group.products[0]?.brand || 'Unknown'}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium text-gray-500">
+                      ~{currencySymbol}{group.avgPrice.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-gray-500">
+                      ~{currencySymbol}{group.avgCost.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-gray-400">-</TableCell>
+                    <TableCell className="text-gray-400">-</TableCell>
+                    <TableCell className="text-gray-400">-</TableCell>
+                    <TableCell>
+                      <span className={group.avgMargin < 0 ? 'text-red-600 font-medium' : group.avgMargin > 20 ? 'text-green-600 font-medium' : group.avgMargin > 0 ? 'text-yellow-600' : ''}>
+                        ~{group.avgMargin.toFixed(1)}%
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={group.totalStock === 0 ? 'text-red-600 font-medium' : group.totalStock < 10 ? 'text-yellow-600' : 'text-gray-900'}>
+                        {group.totalStock >= 200 ? '>200' : group.totalStock}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-medium">{group.avgDailySales.toFixed(2)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-medium">{currencySymbol}{group.avgDailyRevenue.toFixed(0)}</span>
+                    </TableCell>
+                    <TableCell>-</TableCell>
+                  </TableRow>
+                ];
+
+                // Child product rows (when expanded)
+                if (isExpanded && hasMultipleProducts) {
+                  group.products.forEach((product) => {
+                    const metrics = getProductMetrics(product, channelFeePercent);
+                    rows.push(
+                      <TableRow
+                        key={`${group.stockCode}-${product.sku}`}
+                        className="bg-gray-50/50 hover:bg-gray-100 cursor-pointer"
+                        onClick={() => navigate(`/products/${encodeURIComponent(product.sku)}`)}
+                      >
+                        <TableCell className="pl-16">
+                          <div className="flex items-center gap-3">
+                            {product.imageUrl ? (
+                              <img
+                                src={product.imageUrl}
+                                alt={product.title}
+                                loading="lazy"
+                                className="w-8 h-8 object-cover rounded border border-gray-200"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                                <Package className="h-4 w-4 text-gray-400" />
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-mono text-sm text-blue-600">{product.sku}</p>
+                              <p className="text-xs text-gray-500 truncate max-w-xs">{product.title}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell><span className="text-xs text-gray-500">{product.brand || 'Unknown'}</span></TableCell>
+                        <TableCell className="text-sm">{currencySymbol}{product.currentPrice?.toFixed(2) || '0.00'}</TableCell>
+                        <TableCell className="text-sm">
+                          <span className={!product.costPrice ? 'text-red-500' : ''}>
+                            {product.costPrice ? `${currencySymbol}${product.costPrice.toFixed(2)}` : 'Not set'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-sm">{product.deliveryCost ? `${currencySymbol}${product.deliveryCost.toFixed(2)}` : '-'}</TableCell>
+                        <TableCell className="text-sm">{currencySymbol}{metrics.channelFee.toFixed(2)}</TableCell>
+                        <TableCell className="text-sm">
+                          <span className={metrics.ppo < 0 ? 'text-red-600' : metrics.ppo > 0 ? 'text-green-600' : ''}>
+                            {currencySymbol}{metrics.ppo.toFixed(2)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <span className={metrics.margin < 0 ? 'text-red-600' : metrics.margin > 20 ? 'text-green-600' : metrics.margin > 0 ? 'text-yellow-600' : ''}>
+                            {metrics.margin.toFixed(1)}%
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <span className={product.stockLevel === 0 ? 'text-red-600' : product.stockLevel < 10 ? 'text-yellow-600' : ''}>
+                            {product.stockLevel >= 200 ? '>200' : product.stockLevel}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-sm">{((product.salesQuantity || 0) / salesDays).toFixed(2)}</TableCell>
+                        <TableCell className="text-sm">{currencySymbol}{((product.salesRevenue || 0) / salesDays).toFixed(0)}</TableCell>
+                        <TableCell>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleEdit(product); }}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Edit costs"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  });
+                }
+
+                return rows;
+              })
             ) : (
+              /* Regular SKU view */
               paginatedProducts.map((product) => (
                 <TableRow key={product.sku}>
                   <TableCell>
@@ -560,6 +853,7 @@ export default function Products() {
                         <img
                           src={product.imageUrl}
                           alt={product.title}
+                          loading="lazy"
                           className="w-10 h-10 object-cover rounded border border-gray-200"
                         />
                       ) : (
@@ -613,21 +907,16 @@ export default function Products() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {/* 20% Costs: 20% of retail after VAT removed */}
+                    {/* Channel Fee: % of retail after VAT removed */}
                     {(() => {
-                      const priceExVat = (product.currentPrice || 0) / 1.2;
-                      const twentyPercent = priceExVat * 0.2;
-                      return `${currencySymbol}${twentyPercent.toFixed(2)}`;
+                      const { channelFee } = getProductMetrics(product, channelFeePercent);
+                      return `${currencySymbol}${channelFee.toFixed(2)}`;
                     })()}
                   </TableCell>
                   <TableCell>
-                    {/* PPO: Retail - VAT - 20% Clawback - Delivery - Product Cost */}
+                    {/* PPO: Retail - VAT - Channel Fee - Delivery - Product Cost */}
                     {(() => {
-                      const priceExVat = (product.currentPrice || 0) / 1.2;
-                      const clawback = priceExVat * 0.2;
-                      const delivery = product.deliveryCost || 0;
-                      const cost = product.costPrice || 0;
-                      const ppo = priceExVat - clawback - delivery - cost;
+                      const { ppo } = getProductMetrics(product, channelFeePercent);
                       return (
                         <span className={ppo < 0 ? 'text-red-600 font-medium' : ppo > 0 ? 'text-green-600 font-medium' : ''}>
                           {currencySymbol}{ppo.toFixed(2)}
@@ -638,12 +927,7 @@ export default function Products() {
                   <TableCell>
                     {/* Margin %: PPO / Price ex VAT * 100 */}
                     {(() => {
-                      const priceExVat = (product.currentPrice || 0) / 1.2;
-                      const clawback = priceExVat * 0.2;
-                      const delivery = product.deliveryCost || 0;
-                      const cost = product.costPrice || 0;
-                      const ppo = priceExVat - clawback - delivery - cost;
-                      const margin = priceExVat > 0 ? (ppo / priceExVat) * 100 : 0;
+                      const { margin } = getProductMetrics(product, channelFeePercent);
                       return (
                         <span className={margin < 0 ? 'text-red-600 font-medium' : margin > 20 ? 'text-green-600 font-medium' : margin > 0 ? 'text-yellow-600' : ''}>
                           {margin.toFixed(1)}%
@@ -710,7 +994,11 @@ export default function Products() {
       </Card>
 
       {/* Pagination Controls */}
-      {filteredProducts.length > 0 && (
+      {filteredProducts.length > 0 && (() => {
+        const effectiveTotalPages = showStockCodes ? totalStockCodePages : totalPages;
+        const effectiveTotalItems = showStockCodes ? stockCodeGroups.length : filteredProducts.length;
+        const effectiveEndIndex = Math.min(startIndex + pageSize, effectiveTotalItems);
+        return (
         <div className="flex-shrink-0 mt-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <span>Show</span>
@@ -728,7 +1016,8 @@ export default function Products() {
           </div>
 
           <div className="text-sm text-gray-600">
-            Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length.toLocaleString()}
+            Showing {startIndex + 1}-{effectiveEndIndex} of {effectiveTotalItems.toLocaleString()}
+            {showStockCodes && <span className="text-gray-400"> stock codes</span>}
           </div>
 
           <div className="flex items-center gap-1">
@@ -748,26 +1037,27 @@ export default function Products() {
             </button>
 
             <span className="px-3 py-1 text-sm">
-              Page {currentPage} of {totalPages}
+              Page {currentPage} of {effectiveTotalPages || 1}
             </span>
 
             <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => Math.min(effectiveTotalPages, p + 1))}
+              disabled={currentPage === effectiveTotalPages || effectiveTotalPages === 0}
               className="p-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(effectiveTotalPages)}
+              disabled={currentPage === effectiveTotalPages || effectiveTotalPages === 0}
               className="px-2 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Last
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
       </div>
     </div>
   );

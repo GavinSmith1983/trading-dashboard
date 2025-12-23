@@ -4,6 +4,9 @@ export interface Product {
   balterleySku?: string;
   title: string;
   brand: string;
+  family?: string;
+  familyLabel?: string;
+  stockCode?: string; // Parent model SKU from Akeneo (internal material number)
   category?: string;
   familyVariants?: string;
   imageUrl?: string;
